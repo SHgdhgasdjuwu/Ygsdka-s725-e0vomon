@@ -149,7 +149,7 @@ local PET_CONFIG_MAP = {
 local S_TargetFarm       = false
 local S_SelectedPet      = nil
 local S_TargetLoop       = false
-local S_IslandDwellTime  = 5
+local S_IslandDwellTime  = 3
 local S_IslandSweepDelay = 0.8
 
 -- HOISTED — declared here so island-sweep functions can reference them
@@ -157,10 +157,6 @@ local S_IslandSweepDelay = 0.8
 local islandDisplayNames   = {}
 local islandAssetByDisplay = {}
 local islandSweepIdx       = 0
-
--- Island sweep config — sliders feed these
-local S_IslandDwellTime  = 5   -- seconds to stay at each island before moving on
-local S_IslandSweepDelay = 0.8 -- seconds to wait after tp before scanning cache
 
 -- Reverse map: display name -> model key
 local PET_NAME_TO_MODEL = {}
@@ -1110,9 +1106,9 @@ TargetSec:AddToggle({
 
 TargetSec:AddSlider({
     Name    = "Island Dwell Time (s)",
-    Min     = 2,
+    Min     = 0.5,
     Max     = 30,
-    Default = 5,
+    Default = 3,
     Increment = 1,
     Flag    = "IslandDwellTime",
     Callback = function(v)
@@ -1131,6 +1127,207 @@ TargetSec:AddSlider({
         S_IslandSweepDelay = v
     end,
 })
+
+-- ==========================================
+-- ISLAND SWEEP STATUS UI
+-- Tambahkan di dalam TargetSec (Auto Farm Selected section)
+-- Letakkan SETELAH slider IslandSweepDelay
+-- ==========================================
+
+local sweepStatusLbl = TargetSec:AddLabel({
+    Text    = "🔍 Status: Idle",
+    Wrapped = true,
+})
+
+local sweepIslandLbl = TargetSec:AddLabel({
+    Text    = "🗺️ Island: —",
+    Wrapped = true,
+})
+
+local sweepPetLbl = TargetSec:AddLabel({
+    Text    = "🐾 Target: —",
+    Wrapped = true,
+})
+
+-- ==========================================
+-- SWEEP STATUS ENUM
+-- ==========================================
+local SweepStatus = {
+    Idle       = "🔍 Status: Idle",
+    Searching  = "🔄 Status: Searching...",
+    Sweeping   = "🚀 Status: Sweeping islands",
+    Dwelling   = "⏳ Status: Dwelling at island",
+    Entering   = "⚔️ Status: Entering battle",
+    Found      = "✅ Status: Pet found!",
+    TpFailed   = "❌ Status: TP failed — skipping",
+    NotFound   = "⚠️ Status: Not found — next island",
+}
+
+-- Global status state — written by findAndEnterTarget, read by UI loop
+local _G_SweepStatus  = SweepStatus.Idle
+local _G_SweepIsland  = "—"
+local _G_SweepDwelt   = 0   -- current dwell progress (seconds)
+
+-- ==========================================
+-- REPLACE findAndEnterTarget WITH STATUS-AWARE VERSION
+-- (drop-in, same signature, same return contract)
+-- ==========================================
+findAndEnterTarget = function(targetModelName)
+    local char = plr.Character
+    local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then
+        _G_SweepStatus = SweepStatus.Idle
+        return false
+    end
+
+    _G_SweepStatus = SweepStatus.Searching
+    _G_SweepIsland = "—"
+    _G_SweepDwelt  = 0
+
+    -- Check current area first
+    local uid, petPos = findTargetInCache(targetModelName)
+    if uid and petPos then
+        local dist = (hrp.Position - petPos).Magnitude
+        if dist <= S.ScanRadius then
+            warn(string.format("[TargetFarm] %s in range (%.0f studs) — entering direct", targetModelName, dist))
+            _G_SweepStatus = SweepStatus.Entering
+            local ok = enterTargetBattle(uid)
+            _G_SweepStatus = ok and SweepStatus.Found or SweepStatus.Searching
+            return ok
+        else
+            hrp.CFrame = CFrame.new(petPos) * CFrame.new(0, 0, 3)
+            task.wait(0.4)
+            uid, petPos = findTargetInCache(targetModelName)
+            if uid then
+                _G_SweepStatus = SweepStatus.Entering
+                local ok = enterTargetBattle(uid)
+                _G_SweepStatus = ok and SweepStatus.Found or SweepStatus.Searching
+                return ok
+            end
+        end
+    end
+
+    -- Not nearby — rotate islands
+    if #islandDisplayNames == 0 then
+        warn("[TargetFarm] No islands in validated list — can't sweep")
+        _G_SweepStatus = SweepStatus.NotFound
+        return false
+    end
+
+    islandSweepIdx = islandSweepIdx % #islandDisplayNames + 1
+    local targetIsland = islandDisplayNames[islandSweepIdx]
+    _G_SweepIsland = targetIsland
+
+    warn(string.format(
+        "[TargetFarm] %s not in cache — sweeping island %d/%d: %s",
+        targetModelName, islandSweepIdx, #islandDisplayNames, targetIsland
+    ))
+
+    _G_SweepStatus = SweepStatus.Sweeping
+    local tpOk = tpToIsland(targetIsland)
+    if not tpOk then
+        warn("[TargetFarm] TP to " .. targetIsland .. " failed — skipping")
+        _G_SweepStatus = SweepStatus.TpFailed
+        return false
+    end
+
+    task.wait(S_IslandSweepDelay)
+
+    uid, petPos = findTargetInCache(targetModelName)
+    if uid and petPos then
+        warn(string.format("[TargetFarm] %s found at %s — entering", targetModelName, targetIsland))
+        _G_SweepStatus = SweepStatus.Entering
+        local char2 = plr.Character
+        local hrp2  = char2 and char2:FindFirstChild("HumanoidRootPart")
+        if hrp2 then
+            hrp2.CFrame = CFrame.new(petPos) * CFrame.new(0, 0, 3)
+            task.wait(0.3)
+        end
+        uid, _ = findTargetInCache(targetModelName)
+        if uid then
+            local ok = enterTargetBattle(uid)
+            _G_SweepStatus = ok and SweepStatus.Found or SweepStatus.Searching
+            return ok
+        end
+    end
+
+    -- Dwell loop with live counter
+    _G_SweepStatus = SweepStatus.Dwelling
+    local dwelt = 0
+    while dwelt < S_IslandDwellTime do
+        task.wait(0.5)
+        dwelt += 0.5
+        _G_SweepDwelt = dwelt
+        if not S_TargetFarm then
+            _G_SweepStatus = SweepStatus.Idle
+            _G_SweepIsland = "—"
+            _G_SweepDwelt  = 0
+            return false
+        end
+
+        uid, petPos = findTargetInCache(targetModelName)
+        if uid and petPos then
+            warn(string.format("[TargetFarm] %s appeared during dwell at %s", targetModelName, targetIsland))
+            _G_SweepStatus = SweepStatus.Entering
+            local char2 = plr.Character
+            local hrp2  = char2 and char2:FindFirstChild("HumanoidRootPart")
+            if hrp2 then
+                hrp2.CFrame = CFrame.new(petPos) * CFrame.new(0, 0, 3)
+                task.wait(0.3)
+            end
+            uid, _ = findTargetInCache(targetModelName)
+            if uid then
+                local ok = enterTargetBattle(uid)
+                _G_SweepStatus = ok and SweepStatus.Found or SweepStatus.Searching
+                _G_SweepDwelt  = 0
+                return ok
+            end
+        end
+    end
+
+    warn(string.format("[TargetFarm] %s not found at %s — next island next tick", targetModelName, targetIsland))
+    _G_SweepStatus = SweepStatus.NotFound
+    _G_SweepIsland = "—"
+    _G_SweepDwelt  = 0
+    return false
+end
+
+-- ==========================================
+-- STATUS UI UPDATE LOOP
+-- Writes to the 3 labels every 0.5s
+-- ==========================================
+task.spawn(function()
+    while task.wait(0.5) do
+        if not S.Running then break end
+
+        if not S_TargetFarm then
+            pcall(function() sweepStatusLbl:SetText("🔍 Status: Idle") end)
+            pcall(function() sweepIslandLbl:SetText("🗺️ Island: —") end)
+            pcall(function() sweepPetLbl:SetText("🐾 Target: —") end)
+            continue
+        end
+
+        -- Status line
+        local statusText = _G_SweepStatus
+        if _G_SweepStatus == SweepStatus.Dwelling and _G_SweepDwelt > 0 then
+            statusText = string.format("⏳ Dwelling: %.0f / %.0fs", _G_SweepDwelt, S_IslandDwellTime)
+        end
+        pcall(function() sweepStatusLbl:SetText(statusText) end)
+
+        -- Island line  
+        local islandText = _G_SweepIsland ~= "—"
+            and string.format("🗺️ Island: %s (%d/%d)", _G_SweepIsland, islandSweepIdx, #islandDisplayNames)
+            or  "🗺️ Island: —"
+        pcall(function() sweepIslandLbl:SetText(islandText) end)
+
+        -- Target pet line
+        local petText = S_SelectedPet
+            and ("🐾 Target: " .. S_SelectedPet)
+            or  "🐾 Target: —"
+        pcall(function() sweepPetLbl:SetText(petText) end)
+    end
+end)
+
 -- ==========================================
 -- TAB: SHINY
 -- ==========================================
