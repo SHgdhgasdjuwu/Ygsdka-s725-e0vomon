@@ -1,6 +1,6 @@
 -- [[ NR Evomon v3 — ModernV2 UI Port ]] --
 
-local ModernV2 = loadstring(game:HttpGet("https://raw.githubusercontent.com/FayintXhub/FayintLibrary/refs/heads/main/YintUI"))()
+local ModernV2 = loadstring(game:HttpGet("https://raw.githubusercontent.com/woihqdoishaodh/Grexss/refs/heads/main/Main.lua"))()
 
 local Svc = {
     Players  = game:GetService("Players"),
@@ -17,8 +17,12 @@ local PGui = plr:WaitForChild("PlayerGui")
 -- ==========================================
 -- STATE
 -- ==========================================
+-- ==========================================
+-- STATE
+-- ==========================================
 local S = {
     AutoCatch       = false,
+    AutoFarm        = false,  -- NEW: farm movement logic
     AutoLeave       = false,
     TpFarm          = false,
     PlayerESP       = false,
@@ -50,7 +54,7 @@ local selPlayer  = nil
 local S_BossLoop = false
 
 -- toggle object refs (filled after UI build)
-local cToggle, lToggle, tpToggle = nil, nil, nil
+local cToggle, farmToggle, lToggle, tpToggle = nil, nil, nil, nil
 
 -- ==========================================
 -- PET NAMES
@@ -142,9 +146,21 @@ local PET_CONFIG_MAP = {
 -- ==========================================
 -- AUTO FARM SELECTED STATE
 -- ==========================================
-local S_TargetFarm     = false
-local S_SelectedPet    = nil   -- display name e.g. "Pebble"
-local S_TargetLoop     = false
+local S_TargetFarm       = false
+local S_SelectedPet      = nil
+local S_TargetLoop       = false
+local S_IslandDwellTime  = 5
+local S_IslandSweepDelay = 0.8
+
+-- HOISTED — declared here so island-sweep functions can reference them
+-- Populated later in the Teleport tab build section
+local islandDisplayNames   = {}
+local islandAssetByDisplay = {}
+local islandSweepIdx       = 0
+
+-- Island sweep config — sliders feed these
+local S_IslandDwellTime  = 5   -- seconds to stay at each island before moving on
+local S_IslandSweepDelay = 0.8 -- seconds to wait after tp before scanning cache
 
 -- Reverse map: display name -> model key
 local PET_NAME_TO_MODEL = {}
@@ -159,9 +175,7 @@ for model, dname in pairs(PetNames) do
 end
 table.sort(PET_DROPDOWN_LIST)
 
--- Parse display string back to model key
 local function parseDropdownEntry(entry)
-    -- format: "Pebble (Pet0_18)"
     local model = entry:match("%((.-)%)")
     return model
 end
@@ -175,26 +189,21 @@ local function findTargetInCache(targetModelName)
     for _, container in ipairs(cache:GetChildren()) do
         local petModel = container:FindFirstChildWhichIsA("Model")
         if not petModel then continue end
+        if petModel.Name ~= targetModelName then continue end
 
-        if petModel.Name == targetModelName then
-            local uid = container:GetAttribute("creatureUid")
-                or container:GetAttribute("CreatureUid")
-                or petModel:GetAttribute("creatureUid")
-                or container.Name
+        local uid = container:GetAttribute("creatureUid")
+            or container:GetAttribute("CreatureUid")
+            or petModel:GetAttribute("creatureUid")
+            or container.Name
 
-            -- ambil posisi model untuk tp kalau perlu nanti
-            local root = petModel:FindFirstChild("HumanoidRootPart") or petModel.PrimaryPart
-            local pos  = root and root.Position or nil
+        local root = petModel:FindFirstChild("HumanoidRootPart") or petModel.PrimaryPart
+        local pos  = root and root.Position or nil
 
-            return tostring(uid), pos
-        end
+        return tostring(uid), pos
     end
     return nil, nil
 end
 
--- ==========================================
--- FIRE TARGET BATTLE
--- ==========================================
 local function enterTargetBattle(creatureUid)
     local ok, err = pcall(function()
         game:GetService("ReplicatedStorage")
@@ -209,63 +218,119 @@ local function enterTargetBattle(creatureUid)
     return ok
 end
 
+-- ==========================================
+-- ISLAND-SWEEP TARGET FARM
+-- Gets the validated islandAssetByDisplay map that's built in the Teleport section.
+-- islandDisplayNames and islandAssetByDisplay must be declared BEFORE this block runs.
+-- Both are already hoisted at script level from the Teleport tab build.
+-- ==========================================
+local islandSweepIdx = 0
+
+local function tpToIsland(displayName)
+    local assetName = islandAssetByDisplay[displayName]
+    if not assetName then return false end
+
+    local folder = workspace:FindFirstChild("Scene")
+        and workspace.Scene:FindFirstChild("Island")
+    if not folder then return false end
+
+    local model = folder:FindFirstChild(assetName)
+    if not model then return false end
+
+    local landPart = model:FindFirstChildWhichIsA("BasePart", true)
+    if not landPart then return false end
+
+    local char = plr.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+
+    root.CFrame = CFrame.new(landPart.Position + Vector3.new(0, 5, 0))
+    return true
+end
+
 local function findAndEnterTarget(targetModelName)
     local char = plr.Character
     local hrp  = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
 
+    -- First: check current position — pet might already be nearby
     local uid, petPos = findTargetInCache(targetModelName)
-
     if uid and petPos then
         local dist = (hrp.Position - petPos).Magnitude
         if dist <= S.ScanRadius then
             warn(string.format("[TargetFarm] %s in range (%.0f studs) — entering direct", targetModelName, dist))
             return enterTargetBattle(uid)
         else
-            warn(string.format("[TargetFarm] %s found but far (%.0f studs) — tp-ing", targetModelName, dist))
             hrp.CFrame = CFrame.new(petPos) * CFrame.new(0, 0, 3)
-            task.wait(0.6)
+            task.wait(0.4)
             uid, petPos = findTargetInCache(targetModelName)
             if uid then return enterTargetBattle(uid) end
         end
+    end
+
+    -- Not nearby — rotate through validated islands
+    if #islandDisplayNames == 0 then
+        warn("[TargetFarm] No islands in validated list — can't sweep")
         return false
     end
 
-    -- Not in cache at all — this is a real "not spawned nearby" case, not a bug to roam past.
-    -- Sweep a progressively wider radius around the player's current position by re-scanning
-    -- the cache after small movements, instead of jumping to an unrelated creature's location.
-    warn("[TargetFarm] " .. targetModelName .. " not in cache — sweeping local area")
+    islandSweepIdx = islandSweepIdx % #islandDisplayNames + 1
+    local targetIsland = islandDisplayNames[islandSweepIdx]
 
-    local char2 = plr.Character
-    local hrp2  = char2 and char2:FindFirstChild("HumanoidRootPart")
-    if not hrp2 then return false end
+    warn(string.format(
+        "[TargetFarm] %s not in cache — sweeping island %d/%d: %s",
+        targetModelName, islandSweepIdx, #islandDisplayNames, targetIsland
+    ))
 
-    local origin = hrp2.Position
-    local sweepOffsets = {
-        Vector3.new(60, 0, 0),  Vector3.new(-60, 0, 0),
-        Vector3.new(0, 0, 60),  Vector3.new(0, 0, -60),
-        Vector3.new(120, 0, 0), Vector3.new(-120, 0, 0),
-    }
+    local tpOk = tpToIsland(targetIsland)
+    if not tpOk then
+        warn("[TargetFarm] TP to " .. targetIsland .. " failed — skipping")
+        return false
+    end
 
-    for _, offset in ipairs(sweepOffsets) do
-        hrp2.CFrame = CFrame.new(origin + offset)
-        task.wait(0.6) -- let server replicate CreatureModelCache for this area
+    -- Wait for server to stream in CreatureModelCache for this island
+    task.wait(S_IslandSweepDelay)
+
+    uid, petPos = findTargetInCache(targetModelName)
+    if uid and petPos then
+        warn(string.format("[TargetFarm] %s found at %s — entering", targetModelName, targetIsland))
+        local char2 = plr.Character
+        local hrp2  = char2 and char2:FindFirstChild("HumanoidRootPart")
+        if hrp2 then
+            hrp2.CFrame = CFrame.new(petPos) * CFrame.new(0, 0, 3)
+            task.wait(0.3)
+        end
+        uid, _ = findTargetInCache(targetModelName)
+        if uid then return enterTargetBattle(uid) end
+    end
+
+    -- Dwell at this island for configured time, scanning repeatedly
+    local dwelt = 0
+    while dwelt < S_IslandDwellTime do
+        task.wait(0.5)
+        dwelt += 0.5
+        if not S_TargetFarm then return false end
 
         uid, petPos = findTargetInCache(targetModelName)
         if uid and petPos then
-            warn(string.format("[TargetFarm] %s appeared after sweep — entering", targetModelName))
-            hrp2.CFrame = CFrame.new(petPos) * CFrame.new(0, 0, 3)
-            task.wait(0.3)
+            warn(string.format("[TargetFarm] %s appeared during dwell at %s", targetModelName, targetIsland))
+            local char2 = plr.Character
+            local hrp2  = char2 and char2:FindFirstChild("HumanoidRootPart")
+            if hrp2 then
+                hrp2.CFrame = CFrame.new(petPos) * CFrame.new(0, 0, 3)
+                task.wait(0.3)
+            end
             uid, _ = findTargetInCache(targetModelName)
             if uid then return enterTargetBattle(uid) end
         end
     end
 
-    warn("[TargetFarm] " .. targetModelName .. " not found in any swept zone — likely not spawned this cycle")
+    warn(string.format("[TargetFarm] %s not found at %s — next island next tick", targetModelName, targetIsland))
     return false
 end
+
 -- ==========================================
--- TARGET FARM LOOP (replace yang lama)
+-- TARGET FARM LOOP
 -- ==========================================
 task.spawn(function()
     while true do
@@ -285,7 +350,7 @@ task.spawn(function()
             local waited = 0
             repeat task.wait(0.5) waited += 0.5 until waited >= 12
         else
-            task.wait(2)
+            task.wait(0.5)
         end
     end
 end)
@@ -451,16 +516,24 @@ local function setAutoCatchSync(v)
     if cToggle then pcall(function() cToggle:SetValue(v) end) end
 end
 
+local function setAutoFarmSync(v)
+    S.AutoFarm = v
+    if farmToggle then pcall(function() farmToggle:SetValue(v) end) end
+end
+
 local function setTpFarmSync(v)
     S.TpFarm = v
     if tpToggle then pcall(function() tpToggle:SetValue(v) end) end
 end
-
+-- ==========================================
+-- SHINY SYNC HELPERS — update to use setAutoFarmSync
+-- ==========================================
 local function onShinyDetected()
     warn("✨ SHINY DETECTED!")
     isSpamming = false
     S.PrisReady = false
     setAutoCatchSync(false)
+    setAutoFarmSync(false)   -- stop farm movement too
     setAutoLeaveSync(false)
     if S.TpFarm then setTpFarmSync(false) end
     playSound(false)
@@ -620,14 +693,17 @@ Svc.Run.RenderStepped:Connect(function()
 end)
 
 -- ==========================================
--- MAIN LOOPS
+-- MAIN LOOPS — updated conditions
 -- ==========================================
 task.spawn(function()
     while task.wait(S.LoopDelay) do
         if not S.Running then break end
-        if not (S.AutoCatch or S.AutoLeave or S.TpFarm) then continue end
-        if catchVisible() then handleCatch() continue end
-        if S.AutoCatch then
+        if not (S.AutoFarm or S.AutoCatch or S.AutoLeave or S.TpFarm) then continue end
+        if catchVisible() then
+            if S.AutoCatch then handleCatch() end
+            continue
+        end
+        if S.AutoFarm then
             if S.TpFarm then
                 pcall(tpFarmTick)
             else
@@ -655,11 +731,11 @@ task.spawn(function()
     end
 end)
 
--- Watchdog
+-- Watchdog — only catches if AutoCatch is on
 task.spawn(function()
     while task.wait(1.5) do
         if not S.Running then break end
-        if (S.AutoCatch or S.AutoLeave or S.TpFarm) and catchVisible() then
+        if S.AutoCatch and catchVisible() then
             handleCatch()
         end
     end
@@ -667,7 +743,7 @@ end)
 
 -- Chest loop
 task.spawn(function()
-    while task.wait() do
+    while task.wait(0.05) do
         if not S.Running then break end
         if S.ChestFarm then
             local rc = workspace:FindFirstChild("RuntimeCache")
@@ -689,9 +765,9 @@ task.spawn(function()
             end
             local el = 0
             while el < S.ChestDelay and S.ChestFarm do
-                pressKey(Enum.KeyCode.E, 0.05) task.wait(0.2) el += 0.2
+                pressKey(Enum.KeyCode.E, 0.05) task.wait(0.05) el += 0.2
             end
-        else task.wait(0.5) end
+        else task.wait(0.05) end
     end
 end)
 
@@ -753,6 +829,14 @@ ModernV2:AddTheme({
     Icon        = Color3.fromRGB(255, 255, 255),
 })
 
+ModernV2.Scales = {
+	Small = UDim2.fromOffset(540,380),
+	Compact = UDim2.fromOffset(600,380),
+	Mobile = UDim2.fromOffset(640,385),
+	Default = UDim2.fromOffset(640 , 480),
+	Large = UDim2.fromOffset(800 , 600)
+};
+
 local MenuIcon = ModernV2:CreateMenuIcon({
     Image        = "grid",
     Size         = 48,
@@ -775,70 +859,21 @@ local window = ModernV2:Window({
 	NotifyOnCallbackError = false,
 	Loadingscreen = false,
 	Enable3DRenderer = false,
+    Size = ModernV2.IsMobile and ModernV2.Scales.Small or ModernV2.Scales.Large,
 	Keybind = "RightControl",
 	Config = {
 		ConfigFolder = "ModernV2Example",
 		AutoSaveFile = "Default",
-		AutoSave = true,
-		AutoLoad = true,
+		AutoSave = false,
+		AutoLoad = false,
 		Overwrite = true,
 		Format = "JSON",
 		ShowAutoSaveToggle = true,
-		TextGradient = true,
+		TextGradient = false,
 	},
 })
 
 window:AttachMenuIcon(MenuIcon)
-
--- ==========================================
--- RESPONSIVE WINDOW SCALING (built-in Scales only)
--- ==========================================
-local Camera = workspace.CurrentCamera
-local lastScaleName = nil
-
-local function pickScale(vpX, vpY)
-    if vpX <= 600 then
-        return "Mobile"
-    elseif vpX <= 700 then
-        return "Compact"
-    elseif vpX <= 900 then
-        return "Small"
-    elseif vpX <= 1100 then
-        return "Default"
-    end
-    return "Large"
-end
-
-local function applyResponsive()
-    if not Camera or not Camera.Parent then
-        Camera = workspace.CurrentCamera
-    end
-    if not Camera then return end
-
-    local vp = Camera.ViewportSize
-    if vp.X <= 0 or vp.Y <= 0 then return end
-
-    local chosen = pickScale(vp.X, vp.Y)
-
-    if chosen ~= lastScaleName then
-        lastScaleName = chosen
-        window:SetSize(ModernV2.Scales[chosen])
-    end
-end
-
-applyResponsive()
-
-if Camera then
-    Camera:GetPropertyChangedSignal("ViewportSize"):Connect(applyResponsive)
-end
-
-workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-    Camera = workspace.CurrentCamera
-    if Camera then
-        Camera:GetPropertyChangedSignal("ViewportSize"):Connect(applyResponsive)
-    end
-    applyResponsive()
-end)
 
 window:SetAccount({
     Username = plr.DisplayName,
@@ -867,17 +902,17 @@ end
 -- AUTO SKILL SPAM LOOP — MainBattleWindow path, full signal fire
 -- ==========================================
 local AUTO_SKILL_ENABLED = false
-local SKILL_CLICK_DELAY  = 1
+local SKILL_CLICK_DELAY  = 0.5
 local SKILL_DEBUG        = true
 
 local function getSkillButtons()
     local ok, scrollView = pcall(function()
         return PGui
-            :WaitForChild("UIPrefabs", 2)
-            :WaitForChild("MainBattleWindow", 2)
-            :WaitForChild("MainCanvasGroup", 2)
-            :WaitForChild("PetSkillFrame", 2)
-            :WaitForChild("PetNormalSkillScrollView", 2)
+            :WaitForChild("UIPrefabs")
+            :WaitForChild("MainBattleWindow")
+            :WaitForChild("MainCanvasGroup")
+            :WaitForChild("PetSkillFrame")
+            :WaitForChild("PetNormalSkillScrollView")
     end)
 
     if not ok or not scrollView then
@@ -920,7 +955,7 @@ local function fireFullClick(btn)
             local x = absPos.X + absSize.X / 2
             local y = absPos.Y + absSize.Y / 2
             Svc.VIM:SendMouseButtonEvent(x, y, 0, true, game, 0)
-            task.wait(1)
+            task.wait(0.5)
             Svc.VIM:SendMouseButtonEvent(x, y, 0, false, game, 0)
         end)
         anyOk = okVim
@@ -934,7 +969,6 @@ local skillRotateIdx = 0
 local function fireSkillTick()
     local buttons = getSkillButtons()
     if #buttons == 0 then
-        if SKILL_DEBUG then print("[NR SKILL] tidak ada SkillButton visible ditemukan") end
         return false
     end
 
@@ -943,17 +977,12 @@ local function fireSkillTick()
 
     local ok = fireFullClick(btn)
 
-    if SKILL_DEBUG then
-        print(string.format("[NR SKILL] slot=%d/%d (random) fired=%s path=%s",
-            randIdx, #buttons, tostring(ok), btn:GetFullName()))
-    end
-
     return ok
 end
 
 task.spawn(function()
     while S.Running do
-        task.wait(0.5)
+        task.wait(0.1)
 
         if not AUTO_SKILL_ENABLED then
             continue
@@ -973,18 +1002,27 @@ local GenTab = window:AddTab({ Name="General", Icon="lucide:settings-2", Type="D
 
 local AutoSec = GenTab:AddSection({ Name="Automation", Position="Left" })
 
-cToggle = AutoSec:AddToggle({
-    Name     = "Auto Farm & Catch",
+farmToggle = AutoSec:AddToggle({
+    Name     = "Auto Farm",
     Default  = false,
-    Flag     = "AutoCatch",
+    Flag     = "AutoFarm",
     Callback = function(v)
-        S.AutoCatch = v
+        S.AutoFarm = v
         if not v and S.TpFarm then setTpFarmSync(false) end
     end,
 })
 
+cToggle = AutoSec:AddToggle({
+    Name     = "Auto Catch",
+    Default  = false,
+    Flag     = "AutoCatch",
+    Callback = function(v)
+        S.AutoCatch = v
+    end,
+})
+
 AutoSec:AddToggle({
-    Name     = "⚔️ Auto Skill (Battle)",
+    Name     = "Auto Skill (Battle)",
     Default  = false,
     Flag     = "AutoSkill",
     Callback = function(v) AUTO_SKILL_ENABLED = v end,
@@ -1019,14 +1057,18 @@ local StatusSec = GenTab:AddSection({ Name="Status", Position="Right" })
 local farmStatLbl = StatusSec:AddLabel({ Text="Farm: Idle", Wrapped=true })
 local petStatLbl  = StatusSec:AddLabel({ Text="Last Pet: —", Wrapped=true })
 
+-- ==========================================
+-- STATUS LABEL — updated to reflect new flags
+-- ==========================================
 task.spawn(function()
     while task.wait(1) do
         if not S.Running then break end
         local state = "Idle"
         if S.CatchShinyOnly then state = "✨ Shiny Hunt"
         elseif S.CatchShinyPris then state = "💎 Shiny+Pris Hunt"
-        elseif S.AutoCatch and S.TpFarm then state = "🚀 TP Farming"
-        elseif S.AutoCatch then state = "🏃 Walking Farm"
+        elseif S.AutoFarm and S.TpFarm then state = "🚀 TP Farming"
+        elseif S.AutoFarm then state = "🏃 Walking Farm"
+        elseif S.AutoCatch then state = "🎯 Auto Catch"
         elseif S.AutoLeave then state = "↩ Auto Leave" end
         pcall(function() farmStatLbl:SetText("Farm: " .. state) end)
         if S.LastPetName then
@@ -1034,65 +1076,61 @@ task.spawn(function()
         end
     end
 end)
-
 -- ==========================================
 -- SECTION: AUTO FARM SELECTED
 -- ==========================================
 local TargetSec = GenTab:AddSection({ Name="Auto Farm (Selected)", Position="Left" })
 
 local targetPetDropdown = TargetSec:AddDropdown({
-    Name    = "Select Target Pet",
-    Default = PET_DROPDOWN_LIST[1],
-    Values  = PET_DROPDOWN_LIST,
-    Multi   = false,
-    Search  = true,
+    Name     = "Select Target Pet",
+    Default  = PET_DROPDOWN_LIST[1],
+    Values   = PET_DROPDOWN_LIST,
+    Multi    = false,
+    Search   = true,
     Callback = function(v)
         local model = parseDropdownEntry(v)
         S_SelectedPet = model and PetNames[model] or nil
     end,
 })
 
--- Set default selection
 do
     local defaultModel = parseDropdownEntry(PET_DROPDOWN_LIST[1])
     S_SelectedPet = defaultModel and PetNames[defaultModel] or nil
 end
 
 TargetSec:AddToggle({
-    Name     = "🎯 Auto Farm (Selected)",
+    Name     = "Auto Farm (Selected)",
     Default  = false,
     Flag     = "TargetFarm",
     Callback = function(v)
         S_TargetFarm = v
-    end,
-})
-TargetSec:AddButton({
-    Name = "🔍 Find & Enter Once",
-    Icon = "lucide:crosshair",
-    Callback = function()
-        if not S_SelectedPet then
-            window:Notify({ Title="Target Farm", Content="Pilih pet dulu!", Duration=2, Icon="lucide:alert-circle" })
-            return
-        end
-        local modelKey = PET_NAME_TO_MODEL[S_SelectedPet]
-        if not modelKey then
-            window:Notify({ Title="Target Farm", Content="Model key tidak ditemukan.", Duration=2, Icon="lucide:x" })
-            return
-        end
-        task.spawn(function()
-            local uid, pos = findTargetInCache(modelKey)
-            if not uid then
-                window:Notify({ Title="Target Farm", Content=S_SelectedPet.." tidak ada di cache.", Duration=3, Icon="lucide:x" })
-                return
-            end
-            window:Notify({ Title="Target Farm", Content="Entering "..S_SelectedPet.." (uid="..uid..")", Duration=2, Icon="lucide:crosshair" })
-            enterTargetBattle(uid)
-        end)
+        if v then islandSweepIdx = 0 end -- reset rotation on enable
     end,
 })
 
-TargetSec:AddLabel({ Text="UID diambil langsung dari CreatureModelCache via PetConfigId attribute.", Wrapped=true })
+TargetSec:AddSlider({
+    Name    = "Island Dwell Time (s)",
+    Min     = 2,
+    Max     = 30,
+    Default = 5,
+    Increment = 1,
+    Flag    = "IslandDwellTime",
+    Callback = function(v)
+        S_IslandDwellTime = v
+    end,
+})
 
+TargetSec:AddSlider({
+    Name    = "Sweep Delay After TP (s)",
+    Min     = 0.5,
+    Max     = 5,
+    Default = 0.8,
+    Increment = 0.1,
+    Flag    = "IslandSweepDelay",
+    Callback = function(v)
+        S_IslandSweepDelay = v
+    end,
+})
 -- ==========================================
 -- TAB: SHINY
 -- ==========================================
@@ -1109,7 +1147,7 @@ ShinySec:AddToggle({
         pityOverlayGui.Enabled = v
     end,
 })
-
+-- CatchShinyOnly toggle — updated to use setAutoFarmSync
 local soToggle = ShinySec:AddToggle({
     Name     = "✨ Catch Shiny Only",
     Default  = false,
@@ -1118,15 +1156,18 @@ local soToggle = ShinySec:AddToggle({
         S.CatchShinyOnly = v
         if v then
             S.CatchShinyPris = false
+            setAutoFarmSync(true)
             setAutoCatchSync(true)
             setAutoLeaveSync(true)
         else
+            setAutoFarmSync(false)
             setAutoCatchSync(false)
             setAutoLeaveSync(false)
         end
     end,
 })
 
+-- CatchShinyPris toggle — updated
 local spToggle2 = ShinySec:AddToggle({
     Name     = "💎 Catch Shiny & Prismatic",
     Default  = false,
@@ -1136,6 +1177,7 @@ local spToggle2 = ShinySec:AddToggle({
         if v then
             S.CatchShinyOnly = false
             pcall(function() soToggle:SetValue(false) end)
+            setAutoFarmSync(true)
             setAutoCatchSync(true)
             local cur, max = getPityInfo()
             if cur and max and cur >= (max-1) then
@@ -1145,6 +1187,7 @@ local spToggle2 = ShinySec:AddToggle({
             end
         else
             S.PrisReady = false
+            setAutoFarmSync(false)
             setAutoCatchSync(false)
             setAutoLeaveSync(false)
         end
@@ -1258,6 +1301,8 @@ BossSec:AddParagraph({
 local ChestTab = window:AddTab({ Name="Chest", Icon="lucide:package", Type="Single" })
 local ChestSec = ChestTab:AddSection({ Name="Chest Farm", Position="Center" })
 
+local ChestInstantSec = ChestTab:AddSection({ Name="Chest Instant", Position="Center" })
+
 ChestSec:AddToggle({
     Name="Auto Farm Chest", Default=false, Flag="ChestFarm",
     Callback=function(v) S.ChestFarm = v end,
@@ -1286,6 +1331,108 @@ ChestSec:AddButton({
 })
 
 -- ==========================================
+-- INSTANT CLAIM ALL CHEST — one-shot button
+-- ==========================================
+local function claimAllChests()
+    local rc    = workspace:FindFirstChild("RuntimeCache")
+    local rcc   = rc  and rc:FindFirstChild("RuntimeCacheClient")
+    local dir   = rcc and rcc:FindFirstChild("Chest")
+    if not dir then
+        warn("[ChestClaim] Folder Chest tidak ditemukan di RuntimeCacheClient")
+        return 0
+    end
+
+    local remote = game:GetService("ReplicatedStorage")
+        :WaitForChild("Remote")
+        :WaitForChild("Chest")
+        :WaitForChild("ReqClaimExploreReward")
+
+    local claimed = 0
+    for _, child in ipairs(dir:GetChildren()) do
+        -- child.Name = GUID string  e.g. "188c5719-9583-48b4-9c86-acccb84b9dcd"
+        local ok, err = pcall(function()
+            remote:InvokeServer(child.Name)
+        end)
+        if ok then
+            claimed += 1
+            task.wait(0.15)   -- throttle ringan — cegah kick rate-limit
+        else
+            warn("[ChestClaim] Gagal claim " .. child.Name .. " | " .. tostring(err))
+        end
+    end
+
+    return claimed
+end
+
+-- ==========================================
+-- AUTO CHEST CLAIM TOGGLE — loop version
+-- ==========================================
+local S_AutoChestClaim  = false
+local CHEST_CLAIM_CYCLE = 4   -- detik antar scan ulang (bisa dijadiin slider)
+
+task.spawn(function()
+    while S.Running do
+        task.wait(CHEST_CLAIM_CYCLE)
+        if not S_AutoChestClaim then continue end
+
+        local n = claimAllChests()
+        if n > 0 then
+            warn(string.format("[ChestClaim] Claimed %d chest(s) this cycle", n))
+        end
+    end
+end)
+
+-- ==========================================
+-- PASANG KE UI — ganti / tambah di ChestSec
+-- ==========================================
+
+-- Tombol instant claim
+ChestInstantSec:AddButton({
+    Name     = "Claim All Chests (Now)",
+    Icon     = "lucide:package-open",
+    Callback = function()
+        task.spawn(function()
+            window:Notify({
+                Title    = "Chest",
+                Content  = "Claiming all chests...",
+                Duration = 2,
+                Icon     = "lucide:loader",
+            })
+            local n = claimAllChests()
+            window:Notify({
+                Title    = "Chest",
+                Content  = string.format("Claimed %d chest(s)!", n),
+                Duration = 3,
+                Icon     = n > 0 and "lucide:check" or "lucide:x",
+            })
+        end)
+    end,
+})
+
+-- Toggle auto claim
+ChestInstantSec:AddToggle({
+    Name     = "Auto Claim All Chests",
+    Default  = false,
+    Flag     = "AutoChestClaim",
+    Callback = function(v)
+        S_AutoChestClaim = v
+    end,
+})
+
+-- Slider cycle delay
+ChestInstantSec:AddSlider({
+    Name      = "Claim Cycle Delay (s)",
+    Min       = 1,
+    Max       = 30,
+    Default   = 4,
+    Increment = 1,
+    Flag      = "ChestClaimCycle",
+    Callback  = function(v)
+        CHEST_CLAIM_CYCLE = v
+    end,
+})
+
+-- ==========================================
 -- TAB: SERVER HOP
 -- ==========================================
 local SrvTab = window:AddTab({ Name="Server", Icon="lucide:globe", Type="Single" })
@@ -1299,12 +1446,15 @@ SrvSec:AddButton({
         task.spawn(ServerHop)
     end,
 })
-
 -- ==========================================
 -- TAB: TELEPORT
 -- ==========================================
-local TeleTab = window:AddTab({ Name="Teleport", Icon="lucide:map-pin", Type="Single" })
-local TeleSec = TeleTab:AddSection({ Name="Teleport to Player", Position="Center" })
+local TeleTab = window:AddTab({ Name="Teleport", Icon="lucide:map-pin", Type="Double" })
+
+-- ==========================================
+-- TELEPORT TO PLAYER
+-- ==========================================
+local TeleSec = TeleTab:AddSection({ Name="Teleport to Player", Position="Left" })
 
 TeleSec:AddDropdown({
     Name            = "Select Player",
@@ -1325,7 +1475,7 @@ TeleSec:AddDropdown({
 })
 
 TeleSec:AddButton({
-    Name="Teleport", Icon="lucide:navigation",
+    Name="Teleport to Player", Icon="lucide:navigation",
     Callback=function()
         if not selPlayer or selPlayer == "(No players)" then
             window:Notify({ Title="Teleport", Content="No player selected!", Duration=2, Icon="lucide:alert-circle" }) return
@@ -1337,12 +1487,130 @@ TeleSec:AddButton({
             local tc = tgt.Character
             local tr = tc and tc:FindFirstChild("HumanoidRootPart")
             if tr then
-                root.CFrame = tr.CFrame * CFrame.new(0,0,3)
+                root.CFrame = tr.CFrame * CFrame.new(0, 0, 3)
                 window:Notify({ Title="Teleport", Content="Teleported to "..selPlayer, Duration=2, Icon="lucide:check" })
             end
         end
     end,
 })
+
+-- ==========================================
+-- TELEPORT TO ISLAND
+-- ==========================================
+local IslandSec = TeleTab:AddSection({ Name="Teleport to Island", Position="Right" })
+
+local IslandConfig = (function()
+    local ok, cfg = pcall(function()
+        return require(game:GetService("ReplicatedStorage"):WaitForChild("Config"):WaitForChild("IslandConfig"))
+    end)
+    if ok and type(cfg) == "table" then return cfg end
+    warn("[IslandTP] Failed to load IslandConfig")
+    return {}
+end)()
+
+local islandFolder = workspace:FindFirstChild("Scene")
+    and workspace.Scene:FindFirstChild("Island")
+
+-- Re-populate the hoisted tables (no `local` — these were declared at the top)
+islandDisplayNames   = {}
+islandAssetByDisplay = {}
+
+if islandFolder then
+    for _, entry in ipairs(IslandConfig) do
+        if entry.displayName and entry.assetName then
+            if islandFolder:FindFirstChild(entry.assetName) then
+                table.insert(islandDisplayNames, entry.displayName)
+                islandAssetByDisplay[entry.displayName] = entry.assetName
+            else
+                warn(string.format(
+                    "[IslandTP] Skipped '%s' — '%s' not found in workspace.Scene.Island",
+                    entry.displayName, entry.assetName
+                ))
+            end
+        end
+    end
+else
+    warn("[IslandTP] workspace.Scene.Island not found — island teleport unavailable")
+end
+
+local selIsland = islandDisplayNames[1] or nil
+
+if #islandDisplayNames == 0 then
+    IslandSec:AddLabel({ Text="⚠️ No islands found in scene.", Wrapped=true })
+else
+    IslandSec:AddDropdown({
+        Name     = "Select Island",
+        Default  = islandDisplayNames[1],
+        Values   = islandDisplayNames,
+        Multi    = false,
+        Search   = true,
+        Callback = function(v) selIsland = v end,
+    })
+
+    IslandSec:AddButton({
+        Name     = "Teleport to Island",
+        Icon     = "lucide:map-pin",
+        Callback = function()
+            if not selIsland then
+                window:Notify({ Title="Island TP", Content="Select an island first!", Duration=2, Icon="lucide:alert-circle" })
+                return
+            end
+
+            local assetName = islandAssetByDisplay[selIsland]
+            if not assetName then
+                window:Notify({ Title="Island TP", Content="Asset not mapped: "..selIsland, Duration=3, Icon="lucide:x" })
+                return
+            end
+
+            local folder = workspace:FindFirstChild("Scene")
+                and workspace.Scene:FindFirstChild("Island")
+            if not folder then
+                window:Notify({ Title="Island TP", Content="workspace.Scene.Island missing.", Duration=3, Icon="lucide:x" })
+                return
+            end
+
+            local targetModel = folder:FindFirstChild(assetName)
+            if not targetModel then
+                window:Notify({
+                    Title   = "Island TP",
+                    Content = assetName .. " unloaded — server hop or rejoin.",
+                    Duration= 4,
+                    Icon    = "lucide:x",
+                })
+                return
+            end
+
+            local landPart = targetModel:FindFirstChildWhichIsA("BasePart", true)
+            if not landPart then
+                window:Notify({ Title="Island TP", Content="No BasePart in "..assetName, Duration=2, Icon="lucide:x" })
+                return
+            end
+
+            local char = plr.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if not root then
+                window:Notify({ Title="Island TP", Content="Character not ready.", Duration=2, Icon="lucide:x" })
+                return
+            end
+
+            root.CFrame = CFrame.new(landPart.Position + Vector3.new(0, 5, 0))
+            window:Notify({
+                Title   = "Island TP",
+                Content = "Teleported to " .. selIsland .. " (" .. assetName .. ")",
+                Duration= 3,
+                Icon    = "lucide:check",
+            })
+        end,
+    })
+
+    IslandSec:AddParagraph({
+        Name    = "Info",
+        Content = string.format(
+            "%d island(s) available in current scene.\nDropdown excludes entries not loaded in workspace.Scene.Island.\nClick re-validates at teleport time.",
+            #islandDisplayNames
+        ),
+    })
+end
 
 -- ==========================================
 -- TAB: DEBUG
