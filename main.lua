@@ -15,31 +15,35 @@ local plr  = Svc.Players.LocalPlayer
 local PGui = plr:WaitForChild("PlayerGui")
 
 local S = {
-    AutoCatch       = false,
-    AutoFarm        = false,
-    AutoLeave       = false,
-    TpFarm          = false,
-    PlayerESP       = false,
-    ChestFarm       = false,
-    NoBall          = false,
-    AutoKingBall    = false,
-    AutoAdvBall     = false,
-    AutoPrismBall   = false,
-    ShowPityOverlay = false,
-    CatchShinyOnly  = false,
-    CatchShinyPris  = false,
-    PrisReady       = false,
-    Running         = true,
-    Closed          = false,
-    ChestDelay      = 4,
-    ScanRadius      = 500,
-    LoopDelay       = 2,
-    DebugMode       = true,
-    LastDebug       = 0,
-    DebugInterval   = 0.5,
-    ChestIdx        = 0,
-    ESPCache        = {},
-    LastPetName     = nil,
+    AutoCatch         = false,
+    AutoFarm          = false,
+    AutoLeave         = false,
+    TpFarm            = false,
+    PlayerESP         = false,
+    ChestFarm         = false,
+    NoBall            = false,
+    AutoKingBall      = false,
+    AutoAdvBall       = false,
+    AutoPrismBall     = false,
+    PrisAutoKingBall  = false,
+    PrisAutoAdvBall   = false,
+    PrisAutoPrismBall = false,
+    ShowPityOverlay   = false,
+    CatchShinyOnly    = false,
+    CatchShinyPris    = false,
+    PrisReady         = false,
+    Running           = true,
+    Closed            = false,
+    ChestDelay        = 4,
+    ScanRadius        = 500,
+    LoopDelay         = 2,
+    DebugMode         = true,
+    LastDebug         = 0,
+    DebugInterval     = 0.5,
+    ChestIdx          = 0,
+    ESPCache          = {},
+    LastPetName       = nil,
+    BattleSpeedup     = false,
 }
 
 local isSpamming = false
@@ -48,25 +52,10 @@ local selPlayer  = nil
 local S_BossLoop = false
 
 local cToggle, farmToggle, lToggle, tpToggle = nil, nil, nil, nil
-
--- ==========================================
--- PET NAMES
--- ==========================================
-local PetNames = {
-    ["Pet0_18"]="Pebble",    ["Pet0_19"]="Pebroll",   ["Pet0_34"]="Budling",
-    ["Pet0_16"]="Mopebun",   ["Pet0_31"]="Clampip",   ["Pet0_21"]="Sparkit",
-    ["Pet0_52"]="Lavite",    ["Pet0_80"]="Datubud",   ["Pet0_85"]="Mudbud",
-    ["Pet0_54"]="Stardrift", ["Pet0_46"]="Glaclide",  ["Pet0_47"]="Glacone",
-    ["Pet0_10"]="Chirppy",   ["Pet0_11"]="Chirplume", ["Pet0_74"]="Tinkog",
-    ["Pet0_13"]="Humdig",    ["Pet0_14"]="Flutterby", ["Pet0_24"]="Gulpfish",
-    ["Pet0_25"]="Mirefish",  ["Pet0_61"]="Frostseer", ["Pet0_64"]="Gempillar",
-    ["Pet0_49"]="Chitmite",  ["Pet0_50"]="Chitgladi", ["Pet0_37"]="Vipip",
-    ["Pet0_38"]="Vipour",    ["Pet0_66"]="Tarro",     ["Pet0_67"]="Tarragon",
-    ["Pet0_72"]="Starloop",  ["Pet0_73"]="Starmuse",  ["Pet0_82"]="Wispuff",
-    ["Pet0_83"]="Wispshade", ["Pet0_44"]="Fluffet",   ["Pet0_58"]="Spikub",
-    ["Pet0_59"]="Spikumane",
-}
-local function petName(n) return PetNames[n] or n end
+local noBallToggle = nil
+local ballDropdown = nil
+local prisBallDropdown = nil
+local shinyOnlyToggle_ref, shinyPrisToggle_ref = nil, nil
 
 -- ==========================================
 -- BOSS LIST
@@ -94,73 +83,97 @@ for _, b in ipairs(BOSS_LIST) do
 end
 selBoss = bossMap[bossNames[1]]
 
--- ==========================================
--- PET CONFIG ID MAP
--- ==========================================
-local PET_CONFIG_MAP = {
-    ["Pet0_1"]  = 1000001, ["Pet0_2"]  = 1000002, ["Pet0_3"]  = 1000003,
-    ["Pet0_4"]  = 1000004, ["Pet0_5"]  = 1000005, ["Pet0_6"]  = 1000006,
-    ["Pet0_7"]  = 1000007, ["Pet0_8"]  = 1000008, ["Pet0_9"]  = 1000009,
-    ["Pet0_10"] = 1000010, ["Pet0_11"] = 1000011, ["Pet0_12"] = 1000012,
-    ["Pet0_13"] = 1000013, ["Pet0_14"] = 1000014, ["Pet0_15"] = 1000015,
-    ["Pet0_16"] = 1000016, ["Pet0_17"] = 1000017, ["Pet0_18"] = 1000018,
-    ["Pet0_19"] = 1000019, ["Pet0_20"] = 1000020, ["Pet0_21"] = 1000021,
-    ["Pet0_22"] = 1000022, ["Pet0_23"] = 1000023, ["Pet0_24"] = 1000024,
-    ["Pet0_25"] = 1000025, ["Pet0_26"] = 1000026, ["Pet0_27"] = 1000027,
-    ["Pet0_28"] = 1000028, ["Pet0_29"] = 1000029, ["Pet0_30"] = 1000030,
-    ["Pet0_31"] = 1000031, ["Pet0_32"] = 1000032, ["Pet0_33"] = 1000033,
-    ["Pet0_34"] = 1000034, ["Pet0_35"] = 1000035, ["Pet0_36"] = 1000036,
-    ["Pet0_37"] = 1000037, ["Pet0_38"] = 1000038, ["Pet0_39"] = 1000039,
-    ["Pet0_40"] = 1000040, ["Pet0_41"] = 1000041, ["Pet0_42"] = 1000042,
-    ["Pet0_43"] = 1000043, ["Pet0_44"] = 1000044, ["Pet0_45"] = 1000045,
-    ["Pet0_46"] = 1000046, ["Pet0_47"] = 1000047, ["Pet0_48"] = 1000048,
-    ["Pet0_49"] = 1000049, ["Pet0_50"] = 1000050, ["Pet0_51"] = 1000051,
-    ["Pet0_52"] = 1000052, ["Pet0_53"] = 1000053, ["Pet0_54"] = 1000054,
-    ["Pet0_55"] = 1000055, ["Pet0_56"] = 1000056, ["Pet0_57"] = 1000057,
-    ["Pet0_58"] = 1000058, ["Pet0_59"] = 1000059, ["Pet0_60"] = 1000060,
-    ["Pet0_61"] = 1000061, ["Pet0_62"] = 1000062, ["Pet0_63"] = 1000063,
-    ["Pet0_64"] = 1000064, ["Pet0_65"] = 1000065, ["Pet0_66"] = 1000066,
-    ["Pet0_67"] = 1000067, ["Pet0_68"] = 1000068, ["Pet0_69"] = 1000069,
-    ["Pet0_70"] = 1000070, ["Pet0_71"] = 1000071, ["Pet0_72"] = 1000072,
-    ["Pet0_73"] = 1000073, ["Pet0_74"] = 1000074, ["Pet0_75"] = 1000075,
-    ["Pet0_76"] = 1000076, ["Pet0_77"] = 1000077, ["Pet0_78"] = 1000078,
-    ["Pet0_79"] = 1000079, ["Pet0_80"] = 1000080, ["Pet0_81"] = 1000081,
-    ["Pet0_82"] = 1000082, ["Pet0_83"] = 1000083, ["Pet0_84"] = 1000084,
-    ["Pet0_85"] = 1000085, ["Pet0_86"] = 1000086, ["Pet0_87"] = 1000087,
-    ["Pet0_88"] = 1000088, ["Pet0_89"] = 1000089, ["Pet0_90"] = 1000090,
-    ["Pet0_91"] = 1000091, ["Pet0_92"] = 1000092, ["Pet0_93"] = 1000093,
-    ["Pet0_94"] = 1000094, ["Pet0_95"] = 1000095, ["Pet0_96"] = 1000096,
-    ["Pet0_97"] = 1000097, ["Pet0_98"] = 1000098, ["Pet0_99"] = 1000099,
-    ["Pet0_100"]= 1000100, ["Pet0_101"]= 1000101, ["Pet0_102"]= 1000102,
-    ["Pet0_103"]= 1000103, ["Pet0_104"]= 1000104, ["Pet0_105"]= 1000105,
-    ["Pet0_106"]= 1000106, ["Pet0_107"]= 1000107, ["Pet0_108"]= 1000108,
-}
 
-local S_TargetFarm       = false
-local S_SelectedConfigId = nil
 
+-- ==========================================
+-- DYNAMIC PET CONFIG LOADER — filtered
+-- Drops: Pet0_xxx fallback names + non-ASCII display names
+-- ==========================================
+
+local PetConfig = (function()
+    local ok, mod = pcall(function()
+        return require(game:GetService("ReplicatedStorage")
+            :WaitForChild("Config")
+            :WaitForChild("PetConfig"))
+    end)
+    if ok and type(mod) == "table" then return mod end
+    warn("[PetConfig] Failed to load PetConfig module")
+    return {}
+end)()
+
+local PET_CONFIG_MAP    = {}
+local PetNames          = {}
 local CONFIG_TO_DISPLAY = {}
 local DISPLAY_TO_CONFIG = {}
-for model, configId in pairs(PET_CONFIG_MAP) do
-    local dname = PetNames[model]
-    if dname then
-        CONFIG_TO_DISPLAY[configId] = dname
-        DISPLAY_TO_CONFIG[dname]    = configId
+
+local function isAsciiOnly(s)
+    -- returns true if string contains only printable ASCII (32–126)
+    return s:match("^[ -~]+$") ~= nil
+end
+
+local function isPetModelFallback(s)
+    -- rejects names like "Pet0_18", "Pet0_107" — raw model name leaked as display
+    return s:match("^Pet%d*_%d+$") ~= nil
+end
+
+for _, data in pairs(PetConfig) do
+    if type(data) ~= "table" then continue end
+
+    local modelName = data.name     -- "Pet0_107"
+    local configId = tonumber(data.id)
+    if not configId then
+        continue
     end
+    
+    local configStr = tostring(configId)
+    
+    -- hanya terima ID 100xxxx
+    if not configStr:match("^100%d%d%d%d$") then
+        continue
+    end
+
+    if type(modelName) ~= "string" then continue end
+
+    local displayName = data.displayName or modelName
+
+    -- Drop raw model name fallbacks (Pet0_xxx leaked as display)
+    if isPetModelFallback(displayName) then continue end
+
+    -- Drop non-ASCII names (Chinese, Japanese, special chars, etc.)
+    if not isAsciiOnly(displayName) then continue end
+
+    PET_CONFIG_MAP[modelName]      = configId
+    PetNames[modelName]            = displayName
+    CONFIG_TO_DISPLAY[configId]    = displayName
+    DISPLAY_TO_CONFIG[displayName] = configId
+end
+
+local function petName(n)
+    return PetNames[n] or n
 end
 
 local PET_DROPDOWN_LIST = {}
-for dname in pairs(DISPLAY_TO_CONFIG) do table.insert(PET_DROPDOWN_LIST, dname) end
+for dname in pairs(DISPLAY_TO_CONFIG) do
+    table.insert(PET_DROPDOWN_LIST, dname)
+end
 table.sort(PET_DROPDOWN_LIST)
-S_SelectedConfigId = DISPLAY_TO_CONFIG[PET_DROPDOWN_LIST[1]] or nil
+
+local S_SelectedConfigId = DISPLAY_TO_CONFIG[PET_DROPDOWN_LIST[1]] or nil
+
+warn(string.format("[PetConfig] Loaded %d pets (filtered). Sample: %s → %d",
+    #PET_DROPDOWN_LIST,
+    PET_DROPDOWN_LIST[1] or "?",
+    DISPLAY_TO_CONFIG[PET_DROPDOWN_LIST[1]] or 0
+))
+
 
 -- ==========================================
--- SKILL SYSTEM — single declaration block, no duplicates
+-- SKILL SYSTEM
 -- ==========================================
 local AUTO_SKILL_ENABLED = false
 local SKILL_DEBUG        = true
-local SKILL_CLICK_DELAY  = 0.5      -- random mode
-local SKILL_ENTRY_DELAY  = 2.5      -- wait after battle starts before first fire
+local SKILL_CLICK_DELAY  = 0.5
+local SKILL_ENTRY_DELAY  = 2.5
 local SKILL_SLOT_DELAY   = { [1]=1.2, [2]=1.2, [3]=1.2, [4]=1.2 }
 
 local SKILL_KEYCODES = {
@@ -174,13 +187,10 @@ local SKILL_CONFIG_ENABLED = false
 local SKILL_QUEUE          = {}
 local skillQueueIdx        = 1
 local listSkilConfig       = nil
-
 local _cachedScrollView    = nil
 
 local function getScrollView()
-    if _cachedScrollView and _cachedScrollView.Parent then
-        return _cachedScrollView
-    end
+    if _cachedScrollView and _cachedScrollView.Parent then return _cachedScrollView end
     local prefabs = PGui:FindFirstChild("UIPrefabs", true)
     if not prefabs then return nil end
     local bw = prefabs:FindFirstChild("MainBattleWindow", true)
@@ -214,10 +224,8 @@ local function fireSkillSlot(slotIndex, btn)
             task.wait(0.05)
             Svc.VIM:SendKeyEvent(false, kc, false, game)
         end)
-        if SKILL_DEBUG then warn(string.format("[SKILL] key=%s slot=%d ok=%s", tostring(kc), slotIndex, tostring(ok))) end
         return ok
     end
-    -- mouse fallback for slot > 4
     if not btn or not btn.Parent then return false end
     local ok = pcall(function()
         local ap = btn.AbsolutePosition
@@ -226,7 +234,6 @@ local function fireSkillSlot(slotIndex, btn)
         task.wait(0.05)
         Svc.VIM:SendMouseButtonEvent(ap.X + as.X/2, ap.Y + as.Y/2, 0, false, game, 1)
     end)
-    if SKILL_DEBUG then warn(string.format("[SKILL] mouse fallback slot=%s ok=%s", tostring(slotIndex), tostring(ok))) end
     return ok
 end
 
@@ -237,21 +244,32 @@ local function updateSkillConfigLabel()
         return
     end
     local parts = {}
-    for i, entry in ipairs(SKILL_QUEUE) do
-        table.insert(parts, i .. ". Skill " .. entry.slot)
-    end
+    for i, entry in ipairs(SKILL_QUEUE) do table.insert(parts, "Skill " .. entry.slot) end
     pcall(function() listSkilConfig:SetText("Skill List: " .. table.concat(parts, " → ")) end)
 end
 
 -- ==========================================
--- CACHE SCAN
+-- CACHE SCAN — fixed
 -- ==========================================
 local function findPetUidByConfig(targetConfigId)
     local rc    = workspace:FindFirstChild("RuntimeCache")
     local rcs   = rc  and rc:FindFirstChild("RuntimeCacheServer")
     local cache = rcs and rcs:FindFirstChild("CreatureModelCache")
-    if not cache then warn("[TargetFarm] CreatureModelCache not found") return nil end
-    for _, entry in ipairs(cache:GetChildren()) do
+    if not cache then
+        warn("[TargetFarm] CreatureModelCache not found")
+        return nil
+    end
+
+    -- snapshot children into array and shuffle so every scan pass
+    -- hits a different order — avoids always-missing pets that live
+    -- at the tail of the cache list
+    local children = cache:GetChildren()
+    for i = #children, 2, -1 do
+        local j = math.random(i)
+        children[i], children[j] = children[j], children[i]
+    end
+
+    for _, entry in ipairs(children) do
         local rawCid =
             entry:GetAttribute("configid") or entry:GetAttribute("configId") or
             entry:GetAttribute("ConfigId") or entry:GetAttribute("ConfigID")
@@ -259,15 +277,20 @@ local function findPetUidByConfig(targetConfigId)
         if cid == targetConfigId then
             local uid =
                 entry:GetAttribute("creatureUid") or entry:GetAttribute("creatureuid") or
-                entry:GetAttribute("CreatureUid") or entry:GetAttribute("CreatureUID")
+                entry:GetAttribute("CreatureUid")  or entry:GetAttribute("CreatureUID")
             if uid then
                 S.LastPetName = CONFIG_TO_DISPLAY[targetConfigId] or tostring(targetConfigId)
+                warn(string.format("[TargetFarm] Found uid=%s for configId=%d (%s)",
+                    tostring(uid), targetConfigId, S.LastPetName))
                 return tostring(uid)
             else
-                warn(string.format("[TargetFarm] configId %d matched '%s' but creatureUid attr nil", targetConfigId, entry.Name))
+                warn(string.format("[TargetFarm] configId %d matched '%s' but creatureUid attr nil — skipping",
+                    targetConfigId, entry.Name))
             end
         end
+        task.wait(0)   -- yield each entry so the cache stays fresh mid-iteration
     end
+
     return nil
 end
 
@@ -277,7 +300,6 @@ local function enterPetBattle(creatureUid)
             :WaitForChild("Remote"):WaitForChild("Battle")
             :WaitForChild("ReqEnterPetBattle"):FireServer(creatureUid)
     end)
-    if not ok then warn("[TargetFarm] FireServer failed:", err) end
     return ok
 end
 
@@ -298,7 +320,6 @@ if not _G.NR_hooked then
             return oldNamecall(self, ...)
         end)
     end)
-    if not ok then warn("[NR] hookmetamethod gagal:", err) end
 end
 _G.NR_petUID = nil
 
@@ -350,12 +371,6 @@ local function catchVisible()
         PGui:FindFirstChild("BattleGui",   true) ~= nil
     )
     return _catchCache
-end
-
-local function isShiny()
-    if not PGui:FindFirstChild("BattleGui", true) then return false end
-    local sp = PGui:FindFirstChild("ShinyPityText", true)
-    return sp and sp.Text == "--"
 end
 
 local function findPet()
@@ -447,53 +462,300 @@ local function setTpFarmSync(v)
     if tpToggle then pcall(function() tpToggle:SetValue(v) end) end
 end
 
+-- ==========================================
+-- CONFLICT VALIDATOR
+-- ==========================================
+local CONFLICT_RULES = {
+    {
+        source  = "AutoLeave",
+        check   = function() return S.AutoLeave end,
+        kills   = function() return S.AutoCatch end,
+        apply   = function() setAutoCatchSync(false) end,
+        msg     = "Auto Catch dimatiin — Auto Leave aktif. Keduanya ga bisa nyala bareng.",
+    },
+    {
+        source  = "AutoCatch",
+        check   = function() return S.AutoCatch end,
+        kills   = function() return S.AutoLeave end,
+        apply   = function() setAutoLeaveSync(false) end,
+        msg     = "Auto Leave dimatiin — Auto Catch aktif. Pilih salah satu.",
+    },
+    {
+        source  = "CatchShinyOnly",
+        check   = function() return S.CatchShinyOnly end,
+        kills   = function() return S.CatchShinyPris end,
+        apply   = function()
+            S.CatchShinyPris = false
+            if shinyPrisToggle_ref then pcall(function() shinyPrisToggle_ref:SetValue(false) end) end
+        end,
+        msg     = "Catch Shiny & Prismatic dimatiin — Catch Shiny Only aktif.",
+    },
+    {
+        source  = "CatchShinyPris",
+        check   = function() return S.CatchShinyPris end,
+        kills   = function() return S.CatchShinyOnly end,
+        apply   = function()
+            S.CatchShinyOnly = false
+            if shinyOnlyToggle_ref then pcall(function() shinyOnlyToggle_ref:SetValue(false) end) end
+        end,
+        msg     = "Catch Shiny Only dimatiin — Catch Shiny & Prismatic aktif.",
+    },
+    -- NoBall resets both shiny and prismatic ball dropdowns
+    {
+        source  = "NoBall",
+        check   = function() return S.NoBall end,
+        kills   = function()
+            return S.AutoKingBall or S.AutoAdvBall or S.AutoPrismBall
+                or S.PrisAutoKingBall or S.PrisAutoAdvBall or S.PrisAutoPrismBall
+        end,
+        apply   = function()
+            S.AutoKingBall      = false
+            S.AutoAdvBall       = false
+            S.AutoPrismBall     = false
+            S.PrisAutoKingBall  = false
+            S.PrisAutoAdvBall   = false
+            S.PrisAutoPrismBall = false
+            if ballDropdown     then pcall(function() ballDropdown:SetValue("None")     end) end
+            if prisBallDropdown then pcall(function() prisBallDropdown:SetValue("None") end) end
+        end,
+        msg     = "Semua ball selection direset ke None — No Ball aktif.",
+    },
+    {
+        source  = "TpFarm",
+        check   = function() return S.TpFarm and not S.AutoFarm end,
+        kills   = function() return true end,
+        apply   = function() setAutoFarmSync(true) end,
+        msg     = "Auto Farm dinyalain otomatis — Teleport Farm Mode butuh Auto Farm aktif.",
+    },
+    {
+        source  = "AutoFarm",
+        check   = function() return not S.AutoFarm and S.TpFarm end,
+        kills   = function() return true end,
+        apply   = function() setTpFarmSync(false) end,
+        msg     = "Teleport Farm dimatiin — Auto Farm OFF, TP Farm ga bisa jalan sendiri.",
+    },
+}
+
+local _validating = false
+local function validateConflicts(source)
+    if _validating then return end
+    _validating = true
+    for _, rule in ipairs(CONFLICT_RULES) do
+        if rule.source == source and rule.check() and rule.kills() then
+            rule.apply()
+            if window then
+                pcall(function()
+                    window:Notify({
+                        Title    = "⚠️ Konflik Toggle",
+                        Content  = rule.msg,
+                        Duration = 4,
+                        Icon     = "lucide:alert-triangle",
+                    })
+                end)
+            end
+        end
+    end
+    _validating = false
+end
+
+-- ==========================================
+-- DETECTION HELPERS
+-- ==========================================
+-- Shiny pending  : ✨ pity at 599/600 (sm - 1)
+-- Prismatic pending: 💎 pity at 149/150 (max - 1)
+-- ==========================================
+local S_AutoStopShiny     = false   -- NEW
+local S_AutoStopPrismatic = false   -- NEW
+
+local _shinyFiredThisBattle     = false
+local _prismaticFiredThisBattle = false
+local _wasBattle                = false
+
+local function isShinyPending()
+    if not PGui:FindFirstChild("BattleGui", true) then return false end
+    local sc, sm = getShinyPityInfo()
+    return sc ~= nil and sm ~= nil and sc >= (sm - 1)
+end
+
+local function isPrismaticPending()
+    if not PGui:FindFirstChild("BattleGui", true) then return false end
+    local cur, max = getPityInfo()
+    return cur ~= nil and max ~= nil and cur >= (max - 1)
+end
+
+-- ==========================================
+-- SHINY DETECTED
+-- ==========================================
 local function onShinyDetected()
     warn("✨ SHINY DETECTED!")
     isSpamming  = false
     S.PrisReady = false
+
+    local ballKey = S.AutoKingBall  and Enum.KeyCode.Three
+        or S.AutoAdvBall   and Enum.KeyCode.Two
+        or S.AutoPrismBall and Enum.KeyCode.Four
+
     setAutoCatchSync(false)
     setAutoFarmSync(false)
     setAutoLeaveSync(false)
     if S.TpFarm then setTpFarmSync(false) end
     playSound(false)
-    local ballKey = S.AutoKingBall and Enum.KeyCode.Three
-        or S.AutoAdvBall   and Enum.KeyCode.Two
-        or S.AutoPrismBall and Enum.KeyCode.Four
-    if ballKey then
-        task.spawn(function()
-            task.wait(0.5)
+
+    task.spawn(function()
+        task.wait(0.5)
+        if ballKey and not S.NoBall then
             pressKey(ballKey, 0.1)
             task.wait(0.5)
-            isSpamming = true
-            for _ = 1, 30 do pressKey(Enum.KeyCode.E, 0.05) task.wait(0.15) end
-            isSpamming = false
-        end)
-    end
-end
-
-local function onPrismaticReady()
-    warn("💎 PRISMATIC PITY 149/150!")
-    S.PrisReady = true
-    setAutoLeaveSync(true)
-    playSound(true)
-end
-
-local function handleCatch()
-    if (S.CatchShinyOnly or S.CatchShinyPris) and isShiny() then onShinyDetected() return end
-    if S.CatchShinyPris then
-        local cur, max = getPityInfo()
-        if cur and max and cur >= (max - 1) then
-            if not S.AutoLeave then onPrismaticReady() end
-            pressKey(Enum.KeyCode.C, 0.1) return
         end
+        isSpamming = true
+        for _ = 1, 30 do
+            pressKey(Enum.KeyCode.E, 0.05)
+            task.wait(0.15)
+        end
+        isSpamming = false
+    end)
+end
+
+-- ==========================================
+-- PRISMATIC DETECTED — mirrors onShinyDetected exactly
+-- Fires at 💎 149/150. Double sound to distinguish from shiny.
+-- ==========================================
+local function onPrismaticDetected()
+    warn("💎 PRISMATIC DETECTED!")
+    isSpamming  = false
+    S.PrisReady = false
+
+    -- Snapshot pris ball key BEFORE flags get wiped
+    local ballKey = S.PrisAutoKingBall  and Enum.KeyCode.Three
+        or S.PrisAutoAdvBall   and Enum.KeyCode.Two
+        or S.PrisAutoPrismBall and Enum.KeyCode.Four
+
+    setAutoCatchSync(false)
+    setAutoFarmSync(false)
+    setAutoLeaveSync(false)
+    if S.TpFarm then setTpFarmSync(false) end
+    playSound(true)  -- double sound = prismatic signature
+
+    task.spawn(function()
+        task.wait(0.5)
+        if ballKey and not S.NoBall then
+            pressKey(ballKey, 0.1)
+            task.wait(0.5)
+        end
+        isSpamming = true
+        for _ = 1, 30 do
+            pressKey(Enum.KeyCode.E, 0.05)
+            task.wait(0.15)
+        end
+        isSpamming = false
+    end)
+end
+
+-- ==========================================
+-- HANDLE CATCH
+-- Priority: Prismatic (149/150) → Shiny (599/600) → AutoLeave → AutoCatch
+-- Both detection paths are one-shot per battle via their fired flags.
+-- ==========================================
+-- ==========================================
+-- HANDLE CATCH — replace the existing function wholesale
+-- Priority: Prismatic stop → Shiny stop → Prismatic catch → Shiny catch → AutoLeave → AutoCatch
+-- ==========================================
+local function handleCatch()
+    -- ── Auto Stop Prismatic ──────────────────────────────────────────
+    -- Fires before CatchShinyPris so it takes priority if both are on
+    if S_AutoStopPrismatic and not _prismaticFiredThisBattle and isPrismaticPending() then
+        _prismaticFiredThisBattle = true
+        warn("💎 PRISMATIC DETECTED — Auto Stop triggered")
+        playSound(true)   -- double sound signature
+
+        -- halt everything — same teardown as onPrismaticDetected but NO spam catch
+        isSpamming = false
+        S.PrisReady = false
+        setAutoCatchSync(false)
+        setAutoFarmSync(false)
+        setAutoLeaveSync(false)
+        if S.TpFarm then setTpFarmSync(false) end
+        if S_TargetFarm then
+            S_TargetFarm = false
+            -- sync UI toggle if it exists — best-effort
+            pcall(function()
+                window:Notify({
+                    Title    = "💎 Prismatic Detected",
+                    Content  = "Auto Stop aktif — semua farm dihentikan. Tangkap manual!",
+                    Duration = 6,
+                    Icon     = "lucide:gem",
+                })
+            end)
+        end
+        return   -- do NOT press E — leave it for manual
     end
+
+    -- ── Auto Stop Shiny ──────────────────────────────────────────────
+    if S_AutoStopShiny and not _shinyFiredThisBattle and isShinyPending() then
+        _shinyFiredThisBattle = true
+        warn("✨ SHINY DETECTED — Auto Stop triggered")
+        playSound(false)  -- single sound
+
+        isSpamming = false
+        S.PrisReady = false
+        setAutoCatchSync(false)
+        setAutoFarmSync(false)
+        setAutoLeaveSync(false)
+        if S.TpFarm then setTpFarmSync(false) end
+        if S_TargetFarm then
+            S_TargetFarm = false
+            pcall(function()
+                window:Notify({
+                    Title    = "✨ Shiny Detected",
+                    Content  = "Auto Stop aktif — semua farm dihentikan. Tangkap manual!",
+                    Duration = 6,
+                    Icon     = "lucide:sparkles",
+                })
+            end)
+        end
+        return   -- do NOT press E
+    end
+
+    -- ── CatchShinyPris — Prismatic path ─────────────────────────────
+    if S.CatchShinyPris and not _prismaticFiredThisBattle and isPrismaticPending() then
+        _prismaticFiredThisBattle = true
+        onPrismaticDetected()
+        return
+    end
+
+    -- ── CatchShinyOnly / CatchShinyPris — Shiny path ────────────────
+    if (S.CatchShinyOnly or S.CatchShinyPris) and not _shinyFiredThisBattle and isShinyPending() then
+        _shinyFiredThisBattle = true
+        onShinyDetected()
+        return
+    end
+
+    -- ── Normal AutoLeave ─────────────────────────────────────────────
     if S.AutoLeave then
+        local ballKey = nil
+        if isShinyPending() then
+            ballKey = S.AutoKingBall  and Enum.KeyCode.Three
+                or   S.AutoAdvBall   and Enum.KeyCode.Two
+                or   S.AutoPrismBall and Enum.KeyCode.Four
+        end
+        if ballKey and not S.NoBall then
+            pressKey(ballKey, 0.1)
+            task.wait(0.4)
+        end
         pressKey(Enum.KeyCode.C, 0.1)
-    elseif not S.NoBall then
-        pressKey(Enum.KeyCode.E, 0.05) task.wait(0.1)
+        return
+    end
+
+    -- ── Normal AutoCatch ─────────────────────────────────────────────
+    if not S.NoBall then
+        pressKey(Enum.KeyCode.E, 0.05)
+        task.wait(0.1)
     end
 end
 
+-- ==========================================
+-- TP FARM
+-- ==========================================
 local function tpFarmTick()
     local char = plr.Character
     local hrp  = char and char:FindFirstChild("HumanoidRootPart")
@@ -630,7 +892,7 @@ task.spawn(function()
         if not S.Running then break end
         if not (S.AutoFarm or S.AutoCatch or S.AutoLeave or S.TpFarm) then continue end
         if catchVisible() then
-            if S.AutoCatch then handleCatch() end
+            if S.AutoCatch or S.AutoLeave then handleCatch() end
             continue
         end
         if S.AutoFarm then
@@ -664,7 +926,9 @@ end)
 task.spawn(function()
     while task.wait(1.5) do
         if not S.Running then break end
-        if S.AutoCatch and catchVisible() then handleCatch() end
+        if (S.AutoCatch or S.AutoLeave or S.CatchShinyOnly or S.CatchShinyPris) and catchVisible() then
+            handleCatch()
+        end
     end
 end)
 
@@ -707,9 +971,24 @@ task.spawn(function()
     end
 end)
 
+-- ==========================================
+-- PITY WATCHER — resets both fired flags on new battle
+-- ==========================================
 task.spawn(function()
-    while task.wait(1) do
+    while task.wait(0.3) do
         if not S.Running then break end
+
+        local nowBattle = isBattle()
+
+        -- New battle entered → reset both one-shot flags
+        if nowBattle and not _wasBattle then
+            _shinyFiredThisBattle     = false
+            _prismaticFiredThisBattle = false
+        end
+
+        _wasBattle = nowBattle
+
+        -- Pity overlay update
         if S.ShowPityOverlay then
             local petLabel  = S.LastPetName and ("[" .. S.LastPetName .. "]") or ""
             local cur, max  = getPityInfo()
@@ -720,45 +999,29 @@ task.spawn(function()
                 and (petLabel.."\n"..prisText.."\n"..shinyText)
                 or  (prisText.."\n"..shinyText)
         end
-        if S.CatchShinyPris then
-            local cur, max = getPityInfo()
-            if cur and max then
-                if cur >= (max-1) then S.PrisReady = true end
-                if S.PrisReady and not S.AutoLeave then
-                    onPrismaticReady()
-                elseif not (cur >= max-1) and not S.PrisReady and S.AutoLeave and not isShiny() then
-                    setAutoLeaveSync(false)
-                end
-            end
-        end
     end
 end)
 
 -- ==========================================
--- AUTO SKILL LOOP — single instance, both modes
+-- AUTO SKILL LOOP
 -- ==========================================
 task.spawn(function()
     local entryWaited = false
     while S.Running do
         task.wait(0.1)
-        if not AUTO_SKILL_ENABLED then
-            entryWaited = false
-            continue
-        end
+        if not AUTO_SKILL_ENABLED then entryWaited = false continue end
         if not isBattle() then
             _cachedScrollView = nil
             entryWaited       = false
             continue
         end
         if not entryWaited then
-            if SKILL_DEBUG then warn("[SKILL] Battle start — entry delay", SKILL_ENTRY_DELAY, "s") end
             task.wait(SKILL_ENTRY_DELAY)
             entryWaited   = true
             skillQueueIdx = 1
         end
         local buttons = getSkillButtons()
         if #buttons == 0 then
-            if SKILL_DEBUG then warn("[SKILL] No buttons — retry 0.5s") end
             task.wait(0.5)
             continue
         end
@@ -767,12 +1030,10 @@ task.spawn(function()
             local entry     = SKILL_QUEUE[skillQueueIdx]
             local targetIdx = entry.slot
             if targetIdx > #buttons then
-                if SKILL_DEBUG then warn(string.format("[SKILL] slot %d requested, only %d visible — skip", targetIdx, #buttons)) end
                 skillQueueIdx += 1
                 task.wait(0.1)
                 continue
             end
-            if SKILL_DEBUG then warn(string.format("[SKILL] config | queue[%d] → slot %d", skillQueueIdx, targetIdx)) end
             fireSkillSlot(targetIdx, buttons[targetIdx])
             local delay = SKILL_SLOT_DELAY[targetIdx] or 1.2
             skillQueueIdx += 1
@@ -785,16 +1046,18 @@ task.spawn(function()
         end
     end
 end)
-
 -- ==========================================
--- TARGET FARM LOOP
+-- TARGET FARM LOOP — multi-pet rotation, miss = retry same slot
 -- ==========================================
-local S_TargetFarmSignal = Instance.new("BindableEvent")
+local S_TargetFarm        = false
+local S_SelectedConfigIds = {}
+local S_TargetFarmIdx     = 1
+local S_TargetFarmSignal  = Instance.new("BindableEvent")
 
 task.spawn(function()
     while true do
         if not S.Running then break end
-        if not S_TargetFarm or not S_SelectedConfigId then
+        if not S_TargetFarm or #S_SelectedConfigIds == 0 then
             S_TargetFarmSignal.Event:Wait()
             continue
         end
@@ -802,23 +1065,42 @@ task.spawn(function()
             repeat task.wait(0.5) until not isBattle() or not S_TargetFarm
             continue
         end
-        local uid = findPetUidByConfig(S_SelectedConfigId)
+
+        if S_TargetFarmIdx > #S_SelectedConfigIds then S_TargetFarmIdx = 1 end
+        local configId = S_SelectedConfigIds[S_TargetFarmIdx]
+
+        local uid = findPetUidByConfig(configId)
         if uid then
-            warn(string.format("[TargetFarm] configId %d (%s) → uid %s", S_SelectedConfigId, CONFIG_TO_DISPLAY[S_SelectedConfigId] or "?", uid))
             local ok = enterPetBattle(uid)
             if ok then
                 local ws = os.clock()
                 repeat task.wait(0.2) until isBattle() or (os.clock() - ws) >= 3
+
                 local fired = false
                 local conn  = S_TargetFarmSignal.Event:Connect(function() fired = true end)
                 repeat task.wait(0.3) until not isBattle() or not S_TargetFarm or fired
                 conn:Disconnect()
+
+                -- advance ONLY on clean battle end
+                if not fired then
+                    local delayTime = S.TargetFarmNextDelay or 1
+
+                    if delayTime > 0 then
+                        task.wait(delayTime)
+                    end
+
+                    S_TargetFarmIdx = (S_TargetFarmIdx % #S_SelectedConfigIds) + 1
+                end
             else
-                task.wait(0.3)
+                warn("[TargetFarm] enterPetBattle failed — retry in 0.5s")
+                task.wait(0.5)
+                -- no index advance — retry same pet
             end
         else
-            warn(string.format("[TargetFarm] configId %d (%s) not in cache — retry", S_SelectedConfigId, CONFIG_TO_DISPLAY[S_SelectedConfigId] or "?"))
-            task.wait(0.3)
+            warn(string.format("[TargetFarm] configId %d (%s) not found in cache — rescan in 0.5s",
+                configId, CONFIG_TO_DISPLAY[configId] or "?"))
+            task.wait(0.5)
+            -- no index advance — same behavior as original single-select
         end
     end
 end)
@@ -830,7 +1112,6 @@ local function claimAllChests()
     local rc  = workspace:FindFirstChild("RuntimeCache")
     local rcc = rc  and rc:FindFirstChild("RuntimeCacheClient")
     local dir = rcc and rcc:FindFirstChild("Chest")
-    if not dir then warn("[ChestClaim] Folder Chest tidak ditemukan") return 0 end
     local remote = game:GetService("ReplicatedStorage")
         :WaitForChild("Remote"):WaitForChild("Chest"):WaitForChild("ReqClaimExploreReward")
     local claimed = 0
@@ -847,7 +1128,6 @@ task.spawn(function()
         task.wait(CHEST_CLAIM_CYCLE)
         if not S_AutoChestClaim then continue end
         local n = claimAllChests()
-        if n > 0 then warn(string.format("[ChestClaim] Claimed %d chest(s)", n)) end
     end
 end)
 
@@ -875,7 +1155,7 @@ ModernV2.Scales = {
 }
 
 local MenuIcon = ModernV2:CreateMenuIcon({
-    Image       = "grid",
+    Image       = "85817114798115",
     Size        = 48,
     IconColor   = Color3.fromRGB(255,255,255),
     BGColor     = Color3.fromRGB(18,18,26),
@@ -917,40 +1197,56 @@ window:AddTabLabel("FARMING")
 -- ==========================================
 -- TAB: GENERAL
 -- ==========================================
-local GenTab = window:AddTab({ Name="General", Icon="lucide:settings-2", Type="Double" })
+local GenTab  = window:AddTab({ Name="General", Icon="lucide:settings-2", Type="Double" })
 local AutoSec = GenTab:AddSection({ Name="Automation", Position="Left" })
 
 farmToggle = AutoSec:AddToggle({
     Name="Auto Farm", Default=false, Flag="AutoFarm",
-    Callback=function(v) S.AutoFarm=v if not v and S.TpFarm then setTpFarmSync(false) end end,
+    Callback=function(v)
+        S.AutoFarm = v
+        validateConflicts("AutoFarm")
+    end,
 })
 cToggle = AutoSec:AddToggle({
     Name="Auto Catch", Default=false, Flag="AutoCatch",
-    Callback=function(v) S.AutoCatch=v end,
+    Callback=function(v)
+        S.AutoCatch = v
+        validateConflicts("AutoCatch")
+    end,
 })
 lToggle = AutoSec:AddToggle({
     Name="Auto Leave", Default=false, Flag="AutoLeave",
-    Callback=function(v) S.AutoLeave=v end,
+    Callback=function(v)
+        S.AutoLeave = v
+        validateConflicts("AutoLeave")
+    end,
 })
 tpToggle = AutoSec:AddToggle({
     Name="Teleport Farm Mode", Default=false, Flag="TpFarm",
-    Callback=function(v) S.TpFarm=v end,
+    Callback=function(v)
+        S.TpFarm = v
+        validateConflicts("TpFarm")
+    end,
 })
-AutoSec:AddToggle({
+noBallToggle = AutoSec:AddToggle({
     Name="Manual Catch (No Ball)", Default=false, Flag="NoBall",
-    Callback=function(v) S.NoBall=v end,
+    Callback=function(v)
+        S.NoBall = v
+        validateConflicts("NoBall")
+    end,
 })
 
--- Add these near the top with other locals, after S = { ... }
-local _sessionPrefs   = nil
-local _battleSettings = nil
-local _BattleService  = nil
-local _ReqAutoBattle  = nil
+-- ==========================================
+-- AUTO X2 SPEED
+-- ==========================================
+local _sessionPrefs      = nil
+local _battleSettings    = nil
+local _BattleService     = nil
+local _ReqAutoBattle     = nil
 local _battleSpeedupConn = nil
 
 local function injectAutoBattle()
     pcall(function()
-        -- cache BattleService once
         if not _BattleService then
             pcall(function()
                 local Script = game:GetService("ReplicatedStorage"):WaitForChild("Script")
@@ -964,74 +1260,41 @@ local function injectAutoBattle()
                     :WaitForChild("ReqAutoBattle")
             end)
         end
-
-        -- re-scan GC every call — refs go stale on new battle
         _sessionPrefs   = nil
         _battleSettings = nil
         for _, obj in pairs(getgc(true)) do
             if type(obj) == "table" then
-                if not _sessionPrefs and rawget(obj, "preferBattleSpeed") ~= nil then
-                    _sessionPrefs = obj
-                end
-                if not _battleSettings and rawget(obj, "battleSpeedEnabled") ~= nil then
-                    _battleSettings = obj
-                end
+                if not _sessionPrefs   and rawget(obj, "preferBattleSpeed")   ~= nil then _sessionPrefs   = obj end
+                if not _battleSettings and rawget(obj, "battleSpeedEnabled")   ~= nil then _battleSettings = obj end
             end
             if _sessionPrefs and _battleSettings then break end
         end
 
-        if _sessionPrefs then
-            _sessionPrefs.preferBattleSpeed = true
-            _sessionPrefs.preferAutoBattle  = true
-        end
-        if _battleSettings then
-            _battleSettings.battleSpeedEnabled = true
-            _battleSettings.autoBattleEnabled  = true
-        end
-
-        if _BattleService and _BattleService.getCurrentBattle and _BattleService.getCurrentBattle() ~= nil then
-            pcall(function() _BattleService.autoBattle(true) end)
-            if _ReqAutoBattle then
-                pcall(function() _ReqAutoBattle:InvokeServer(true) end)
-            end
-        end
+        if _sessionPrefs  then _sessionPrefs.preferBattleSpeed    = true end
+        if _battleSettings then _battleSettings.battleSpeedEnabled = true end
     end)
 end
 
--- Replace the Battle Speed Up toggle with this:
 AutoSec:AddToggle({
     Name="Auto x2 Speed", Default=false, Flag="BattleSpeedup",
     Callback=function(v)
         S.BattleSpeedup = v
-        if _battleSpeedupConn then
-            _battleSpeedupConn:Disconnect()
-            _battleSpeedupConn = nil
-        end
+        if _battleSpeedupConn then _battleSpeedupConn:Disconnect() _battleSpeedupConn = nil end
         if v then
-            task.spawn(injectAutoBattle) -- immediate first hit
-            -- re-inject every 3s so stale GC refs get refreshed each battle
-            _battleSpeedupConn = Svc.Run.Heartbeat:Connect(function()
-                if not S.BattleSpeedup then return end
-                if isBattle() then
-                    pcall(injectAutoBattle)
-                end
-            end)
-            -- throttle: only fire once per 3s
-            local _lastInject = 0
-            _battleSpeedupConn:Disconnect()
-            _battleSpeedupConn = nil
+            task.spawn(injectAutoBattle)
             task.spawn(function()
                 while S.BattleSpeedup and S.Running do
                     task.wait(3)
-                    if S.BattleSpeedup and isBattle() then
-                        pcall(injectAutoBattle)
-                    end
+                    if S.BattleSpeedup and isBattle() then pcall(injectAutoBattle) end
                 end
             end)
         end
     end,
 })
 
+-- ==========================================
+-- STATUS
+-- ==========================================
 local StatusSec   = GenTab:AddSection({ Name="Status", Position="Right" })
 local farmStatLbl = StatusSec:AddLabel({ Text="Farm: Idle", Wrapped=true })
 local petStatLbl  = StatusSec:AddLabel({ Text="Last Pet: —", Wrapped=true })
@@ -1040,71 +1303,254 @@ task.spawn(function()
     while task.wait(1) do
         if not S.Running then break end
         local state = "Idle"
-        if     S.CatchShinyOnly then state = "✨ Shiny Hunt"
-        elseif S.CatchShinyPris then state = "💎 Shiny+Pris Hunt"
-        elseif S.AutoFarm and S.TpFarm then state = "🚀 TP Farming"
-        elseif S.AutoFarm  then state = "🏃 Walking Farm"
-        elseif S.AutoCatch then state = "🎯 Auto Catch"
-        elseif S.AutoLeave then state = "↩ Auto Leave" end
+        if     S.CatchShinyOnly           then state = "✨ Shiny Hunt"
+        elseif S.CatchShinyPris           then state = "💎 Shiny+Pris Hunt"
+        elseif S.AutoFarm and S.TpFarm    then state = "🚀 TP Farming"
+        elseif S.AutoFarm                 then state = "🏃 Walking Farm"
+        elseif S.AutoCatch                then state = "🎯 Auto Catch"
+        elseif S.AutoLeave                then state = "↩ Auto Leave" end
         pcall(function() farmStatLbl:SetText("Farm: "..state) end)
         if S.LastPetName then pcall(function() petStatLbl:SetText("Last Pet: "..S.LastPetName) end) end
     end
 end)
 
--- Auto Farm Selected
+-- ==========================================
+-- AUTO FARM SELECTED — multi-pet rotation
+-- ==========================================
 local TargetSec = GenTab:AddSection({ Name="Auto Farm (Selected)", Position="Left" })
 
+local targetRotationLabel = TargetSec:AddLabel({ Text="Rotation: (none)", Wrapped=true })
+
+local function updateTargetRotationLabel()
+    if #S_SelectedConfigIds == 0 then
+        pcall(function() targetRotationLabel:SetText("Rotation: (none)") end)
+        return
+    end
+    local names = {}
+    for _, cid in ipairs(S_SelectedConfigIds) do
+        table.insert(names, CONFIG_TO_DISPLAY[cid] or tostring(cid))
+    end
+    pcall(function() targetRotationLabel:SetText("Rotation: " .. table.concat(names, " → ")) end)
+end
+
 TargetSec:AddDropdown({
-    Name="Select Target Pet", Default=PET_DROPDOWN_LIST[1], Values=PET_DROPDOWN_LIST, Multi=false, Search=true,
-    Callback=function(v)
-        S_SelectedConfigId = DISPLAY_TO_CONFIG[v] or nil
-        warn(string.format("[TargetFarm] Selected: %s → configId %s", v, tostring(S_SelectedConfigId)))
-        if S_TargetFarm and S_SelectedConfigId then S_TargetFarmSignal:Fire() end
+    Name    = "Select Target Pet(s)",
+    Default = {},
+    Values  = PET_DROPDOWN_LIST,
+    Multi   = true,
+    Search  = true,
+    Callback = function(v)
+        -- rebuild ordered configId list from multi-select result
+        -- ModernV2 multi returns dict { ["DisplayName"]=true } or array { "DisplayName" }
+        local selected = {}
+        if type(v) == "table" then
+            for k, val in pairs(v) do
+                if type(k) == "string" and val == true then
+                    table.insert(selected, k)          -- dict form
+                elseif type(val) == "string" then
+                    table.insert(selected, val)         -- array form
+                end
+            end
+        end
+        table.sort(selected)   -- stable alphabetical order matches PET_DROPDOWN_LIST
+
+        S_SelectedConfigIds = {}
+        S_TargetFarmIdx     = 1
+        for _, dname in ipairs(selected) do
+            local cid = DISPLAY_TO_CONFIG[dname]
+            if cid then table.insert(S_SelectedConfigIds, cid) end
+        end
+
+        updateTargetRotationLabel()
+        if S_TargetFarm and #S_SelectedConfigIds > 0 then S_TargetFarmSignal:Fire() end
     end,
 })
+
+TargetSec:AddSlider({
+    Name="Next Pet Delay", Min=0.5, Max=10.0, Default=2.0, Increment=0.1, Flag="TargetFarmNextDelay",
+    Callback=function(v) S.TargetFarmNextDelay = Value end,
+})
+
 TargetSec:AddToggle({
-    Name="Auto Farm (Selected)", Default=false, Flag="TargetFarm",
-    Callback=function(v)
-        S_TargetFarm = v
-        if v and S_SelectedConfigId then S_TargetFarmSignal:Fire() end
+    Name     = "Auto Farm (Selected)",
+    Default  = false,
+    Flag     = "TargetFarm",
+    Callback = function(v)
+        S_TargetFarm    = v
+        S_TargetFarmIdx = 1   -- always restart rotation from slot 1 on toggle
+        if v and #S_SelectedConfigIds > 0 then S_TargetFarmSignal:Fire() end
+    end,
+})
+-- ==========================================
+-- HELPER: load PetStorage sekali, cache-nya
+-- ==========================================
+local _PetStorage      = nil
+local _PetGroupStorage = nil
+
+local function getPetStorage()
+    if _PetStorage then return _PetStorage end
+    local ok, mod = pcall(function()
+        return require(game:GetService("ReplicatedStorage")
+            :WaitForChild("Storage")
+            :WaitForChild("PetStorage"))
+    end)
+    if ok and mod then _PetStorage = mod end
+    return _PetStorage
+end
+
+local function getPetGroupStorage()
+    if _PetGroupStorage then return _PetGroupStorage end
+    local ok, mod = pcall(function()
+        return require(game:GetService("ReplicatedStorage")
+            :WaitForChild("Storage")
+            :WaitForChild("PetGroupStorage"))
+    end)
+    if ok and mod then _PetGroupStorage = mod end
+    return _PetGroupStorage
+end
+
+-- ==========================================
+-- AUTO RELEASE SECTION
+-- ==========================================
+local ReleaseSec    = GenTab:AddSection({ Name="Auto Release", Position="Left" })
+local S_AutoRelease = false
+local S_ReleaseSet  = {}   -- { ["D"]=true, ["C"]=true, ... } — filled by multi-select
+
+local function shouldReleasePet(petUuid)
+    if not next(S_ReleaseSet) then return false end   -- nothing selected → skip
+
+    local PS  = getPetStorage()
+    local PGS = getPetGroupStorage()
+    if not PS then return false end
+
+    -- build grouped uuid set — skip pets that are already in a group
+    local groupedUuids = {}
+    if PGS then
+        local ok, group = pcall(function() return PGS.getPetGroup() end)
+        if ok and group and group.petGroupList then
+            for _, g in pairs(group.petGroupList) do
+                for _, uuid in ipairs(g.petUuids or {}) do
+                    groupedUuids[uuid] = true
+                end
+            end
+        end
+    end
+
+    local ok, petList = pcall(function() return PS.getPetList() end)
+    if not ok or not petList then return false end
+
+    local pet = petList[petUuid]
+    if not pet then return false end
+
+    local grade = pet.grade or "D"
+
+    -- release only if: grade is explicitly checked AND pet is not grouped
+    return S_ReleaseSet[grade] == true and not groupedUuids[petUuid]
+end
+
+local function tryReleasePet(petUuid)
+    local ok, err = pcall(function()
+        game:GetService("ReplicatedStorage")
+            :WaitForChild("Remote"):WaitForChild("Pet")
+            :WaitForChild("ReqRemovePets"):InvokeServer({ petUuid })
+    end)
+    return ok
+end
+
+ReleaseSec:AddDropdown({
+    Name     = "Select",
+    Default = {},
+    Values   = { "D", "C", "B", "A", "S", "SSS" },
+    Multi    = true,
+    Search   = false,
+    Flag     = "ReleaseGrade",
+    Callback = function(v)
+        -- ModernV2 multi-select returns a table: { ["D"]=true, ["C"]=true, ... }
+        -- or a plain array depending on lib version — handle both.
+        S_ReleaseSet = {}
+        if type(v) == "table" then
+            for k, val in pairs(v) do
+                if type(k) == "string" and val == true then
+                    S_ReleaseSet[k] = true           -- dict form
+                elseif type(val) == "string" then
+                    S_ReleaseSet[val] = true          -- array form
+                end
+            end
+        end
+        local selected = {}
+        for grade in pairs(S_ReleaseSet) do table.insert(selected, grade) end
+        table.sort(selected)
+    end,
+})
+
+-- UI
+ReleaseSec:AddToggle({
+    Name     = "Auto Release",
+    Default  = false,
+    Flag     = "AutoRelease",
+    Callback = function(v)
+        S_AutoRelease = v
+        if v and not next(S_ReleaseSet) then
+            window:Notify({
+                Title    = "⚠️ Auto Release",
+                Content  = "Pilih grade yang mau di-release dulu.",
+                Duration = 4,
+                Icon     = "lucide:alert-triangle",
+            })
+        end
     end,
 })
 
 -- ==========================================
--- SKILL CONFIGURATION SECTION
+-- AUTO RELEASE LOOP
+-- ==========================================
+task.spawn(function()
+    while task.wait(3) do
+        if not S.Running then break end
+        if not S_AutoRelease or not next(S_ReleaseSet) then continue end
+
+        local PS = getPetStorage()
+        if not PS then continue end
+
+        local ok, petList = pcall(function() return PS.getPetList() end)
+        if not ok or not petList then continue end
+
+        for uuid in pairs(petList) do
+            if not S_AutoRelease then break end
+            if shouldReleasePet(uuid) then
+                tryReleasePet(uuid)
+                task.wait(0.1)
+            end
+        end
+    end
+end)
+
+-- ==========================================
+-- SKILL CONFIGURATION
 -- ==========================================
 local SkillSec = GenTab:AddSection({ Name="Skill Configuration", Position="Right" })
 
 listSkilConfig = SkillSec:AddLabel({ Text="Skill List: (empty)", Wrapped=true })
-
 local function makeSkillButton(slot, name)
     SkillSec:AddButton({
         Name=name, Icon="lucide:zap",
         Callback=function()
-            local found = nil
-            for i, entry in ipairs(SKILL_QUEUE) do
-                if entry.slot == slot then found = i break end
-            end
-            if found then
-                table.remove(SKILL_QUEUE, found)
-                if skillQueueIdx > #SKILL_QUEUE then skillQueueIdx = 1 end
-                window:Notify({ Title="Skill Config", Content=name.." removed", Duration=1.5, Icon="lucide:minus" })
-            else
-                table.insert(SKILL_QUEUE, { slot=slot })
-                window:Notify({ Title="Skill Config", Content=name.." → pos "..#SKILL_QUEUE, Duration=1.5, Icon="lucide:plus" })
-            end
+            table.insert(SKILL_QUEUE, { slot=slot })
+            window:Notify({
+                Title="Skill Config",
+                Content=name.." → pos "..#SKILL_QUEUE,
+                Duration=1.5,
+                Icon="lucide:plus"
+            })
             updateSkillConfigLabel()
-            if SKILL_DEBUG then
-                warn("[SKILL] Queue:") for i, e in ipairs(SKILL_QUEUE) do warn(string.format("  [%d] slot=%d", i, e.slot)) end
-            end
         end,
     })
 end
 
-makeSkillButton(1, "Skill 1")
-makeSkillButton(2, "Skill 2")
-makeSkillButton(3, "Skill 3")
-makeSkillButton(4, "Skill 4")
+makeSkillButton(1, "Add Skill 1")
+makeSkillButton(2, "Add Skill 2")
+makeSkillButton(3, "Add Skill 3")
+makeSkillButton(4, "Add Skill 4")
 
 SkillSec:AddSlider({
     Name="Skill Delay (s) — Config Mode", Min=0.5, Max=10.0, Default=5.0, Increment=0.1, Flag="SkillSlotDelay",
@@ -1129,13 +1575,11 @@ SkillSec:AddToggle({
     Name="Use Skill Config", Default=false, Flag="UseSkillConfig",
     Callback=function(v)
         SKILL_CONFIG_ENABLED=v skillQueueIdx=1
-        if SKILL_DEBUG then warn("[SKILL] UseSkillConfig =", v, "| Queue =", #SKILL_QUEUE) end
     end,
 })
-
 SkillSec:AddParagraph({
     Name="Info",
-    Content="Entry delay = delay before the first skill. \nSkill delay = delay between skills in the queue.",
+    Content="Entry delay = delay before the first skill.\nSkill delay = delay between skills in the queue.",
 })
 
 -- ==========================================
@@ -1149,36 +1593,147 @@ ShinySec:AddToggle({
     Callback=function(v) S.ShowPityOverlay=v pityOverlayGui.Enabled=v end,
 })
 
-local soToggle = ShinySec:AddToggle({
+shinyOnlyToggle_ref = ShinySec:AddToggle({
     Name="Catch Shiny Only", Default=false, Flag="CatchShinyOnly",
     Callback=function(v)
-        S.CatchShinyOnly=v
-        if v then S.CatchShinyPris=false setAutoFarmSync(true) setAutoCatchSync(true) setAutoLeaveSync(true)
-        else setAutoFarmSync(false) setAutoCatchSync(false) setAutoLeaveSync(false) end
+        S.CatchShinyOnly = v
+        if v then
+            setAutoFarmSync(true)
+            setAutoCatchSync(true)
+            setAutoLeaveSync(true)
+        else
+            setAutoFarmSync(false)
+            setAutoCatchSync(false)
+            setAutoLeaveSync(false)
+        end
+        validateConflicts("CatchShinyOnly")
     end,
 })
 
-ShinySec:AddToggle({
+shinyPrisToggle_ref = ShinySec:AddToggle({
     Name="Catch Shiny & Prismatic", Default=false, Flag="CatchShinyPris",
     Callback=function(v)
-        S.CatchShinyPris=v
+        S.CatchShinyPris = v
         if v then
-            S.CatchShinyOnly=false pcall(function() soToggle:SetValue(false) end)
-            setAutoFarmSync(true) setAutoCatchSync(true)
-            local cur, max = getPityInfo()
-            if cur and max and cur>=(max-1) then setAutoLeaveSync(true) else setAutoLeaveSync(false) end
+            setAutoFarmSync(true)
+            setAutoCatchSync(true)
+            setAutoLeaveSync(false)
         else
-            S.PrisReady=false setAutoFarmSync(false) setAutoCatchSync(false) setAutoLeaveSync(false)
+            S.PrisReady = false
+            setAutoFarmSync(false)
+            setAutoCatchSync(false)
+            setAutoLeaveSync(false)
+        end
+        validateConflicts("CatchShinyPris")
+    end,
+})
+
+local AutoStopPity = ShinyTab:AddSection({ Name="Auto Stop Catch", Position="Left" })
+
+AutoStopPity:AddToggle({
+    Name     = "Auto Stop on Shiny",
+    Default  = false,
+    Flag     = "AutoStopShiny",
+    Callback = function(v)
+        S_AutoStopShiny = v
+        -- Auto Stop and Catch Shiny Only are mutually exclusive
+        if v and S.CatchShinyOnly then
+            S.CatchShinyOnly = false
+            if shinyOnlyToggle_ref then
+                pcall(function() shinyOnlyToggle_ref:SetValue(false) end)
+            end
         end
     end,
 })
 
-local BallSec = ShinyTab:AddSection({ Name="Ball on Shiny Detect", Position="Right" })
-BallSec:AddToggle({ Name="King Ball",      Default=false, Flag="KingBall",  Callback=function(v) S.AutoKingBall=v  if v then S.AutoAdvBall=false  S.AutoPrismBall=false end end })
-BallSec:AddToggle({ Name="Advanced Ball",  Default=false, Flag="AdvBall",   Callback=function(v) S.AutoAdvBall=v   if v then S.AutoKingBall=false S.AutoPrismBall=false end end })
-BallSec:AddToggle({ Name="Prismatic Ball", Default=false, Flag="PrismBall", Callback=function(v) S.AutoPrismBall=v if v then S.AutoKingBall=false S.AutoAdvBall=false  end end })
+AutoStopPity:AddToggle({
+    Name     = "Auto Stop on Prismatic",
+    Default  = false,
+    Flag     = "AutoStopPrismatic",
+    Callback = function(v)
+        S_AutoStopPrismatic = v
+        -- Auto Stop and Catch Shiny & Prismatic are mutually exclusive
+        if v and S.CatchShinyPris then
+            S.CatchShinyPris = false
+            if shinyPrisToggle_ref then
+                pcall(function() shinyPrisToggle_ref:SetValue(false) end)
+            end
+        end
+    end,
+})
 
-local PitySec      = ShinyTab:AddSection({ Name="Pity Counter", Position="Right" })
+
+-- ==========================================
+-- BALL SECTION — Shiny (✨ 599/600) + Prismatic (💎 149/150)
+-- Both use the same option set; separate flags; separate dropdowns.
+-- ==========================================
+local BallSec    = ShinyTab:AddSection({ Name="Ball on Detect", Position="Right" })
+local BALL_OPTIONS = { "None", "King Ball", "Advanced Ball", "Prismatic Ball" }
+
+local function applyBallSelection(v)
+    S.AutoKingBall  = (v == "King Ball")
+    S.AutoAdvBall   = (v == "Advanced Ball")
+    S.AutoPrismBall = (v == "Prismatic Ball")
+    if v ~= "None" and S.NoBall then
+        S.NoBall = false
+        if noBallToggle then pcall(function() noBallToggle:SetValue(false) end) end
+        if window then
+            pcall(function()
+                window:Notify({
+                    Title    = "⚠️ Konflik Toggle",
+                    Content  = "No Ball dimatiin — ball dipilih dari dropdown.",
+                    Duration = 3,
+                    Icon     = "lucide:alert-triangle",
+                })
+            end)
+        end
+    end
+end
+
+local function applyPrisBallSelection(v)
+    S.PrisAutoKingBall  = (v == "King Ball")
+    S.PrisAutoAdvBall   = (v == "Advanced Ball")
+    S.PrisAutoPrismBall = (v == "Prismatic Ball")
+    if v ~= "None" and S.NoBall then
+        S.NoBall = false
+        if noBallToggle then pcall(function() noBallToggle:SetValue(false) end) end
+        if window then
+            pcall(function()
+                window:Notify({
+                    Title    = "⚠️ Konflik Toggle",
+                    Content  = "No Ball dimatiin — ball dipilih dari dropdown.",
+                    Duration = 3,
+                    Icon     = "lucide:alert-triangle",
+                })
+            end)
+        end
+    end
+end
+
+ballDropdown = BallSec:AddDropdown({
+    Name     = "Shiny Ball",
+    Default  = "None",
+    Values   = BALL_OPTIONS,
+    Multi    = false,
+    Search   = false,
+    Flag     = "BallSelect",
+    Callback = applyBallSelection,
+})
+
+prisBallDropdown = BallSec:AddDropdown({
+    Name     = "Prismatic Ball",
+    Default  = "None",
+    Values   = BALL_OPTIONS,
+    Multi    = false,
+    Search   = false,
+    Flag     = "PrisBallSelect",
+    Callback = applyPrisBallSelection,
+})
+
+-- ==========================================
+-- PITY COUNTER
+-- ==========================================
+local PitySec        = ShinyTab:AddSection({ Name="Pity Counter", Position="Right" })
 local pityDisplayLbl = PitySec:AddLabel({ Text="💎 Prismatic: —/—\n✨ Shiny: —/—", Wrapped=true })
 
 task.spawn(function()
@@ -1195,7 +1750,7 @@ end)
 -- ==========================================
 -- TAB: ESP
 -- ==========================================
-window:AddTabLabel("TOOLS")
+window:AddTabLabel("MAIN MENU")
 local ESPTab = window:AddTab({ Name="ESP", Icon="lucide:eye", Type="Single" })
 local ESPSec = ESPTab:AddSection({ Name="Player ESP", Position="Center" })
 
@@ -1232,7 +1787,7 @@ BossSec:AddButton({
     end,
 })
 BossSec:AddToggle({
-    Name="🔁 Loop Boss Battle", Default=false, Flag="BossLoop",
+    Name="Auto Boss Battle", Default=false, Flag="BossLoop",
     Callback=function(v) S_BossLoop=v if v and not selBoss then selBoss=bossMap[bossNames[1]] end end,
 })
 
@@ -1313,7 +1868,6 @@ local IslandConfig = (function()
         return require(game:GetService("ReplicatedStorage"):WaitForChild("Config"):WaitForChild("IslandConfig"))
     end)
     if ok and type(cfg)=="table" then return cfg end
-    warn("[IslandTP] Failed to load IslandConfig") return {}
 end)()
 
 local islandFolder = workspace:FindFirstChild("Scene") and workspace.Scene:FindFirstChild("Island")
@@ -1360,33 +1914,83 @@ else
 end
 
 -- ==========================================
+-- TAB: REWARDS
+-- ==========================================
+local RewardTab = window:AddTab({ Name="Rewards", Icon="lucide:gift", Type="Single" })
+local DailyquestSec = RewardTab:AddSection({ Name="Claim Rewards", Position="Center" })
+
+DailyquestSec:AddButton({
+    Name="Claim All Daily Quest", Icon="lucide:mail-question-mark",
+    Callback=function()
+        local remote = game:GetService("ReplicatedStorage")
+            :WaitForChild("Remote"):WaitForChild("Task"):WaitForChild("ReqCompleteTask")
+        local claimed = 0
+        for i = 1, 8 do
+            local taskId = 2000000 + (i * 1000) + 1
+            local ok, err = pcall(function() remote:InvokeServer(taskId) end)
+            task.wait(0.2)
+        end
+        window:Notify({ Title="Daily Quest", Content=string.format("Claimed %d/8 quest(s)!", claimed), Duration=3, Icon=claimed==8 and "lucide:check" or "lucide:alert-circle" })
+    end,
+})
+
+DailyquestSec:AddButton({
+    Name="Claim All Achievement", Icon="lucide:mail-question-mark",
+    Callback=function()
+        local remote = game:GetService("ReplicatedStorage")
+            :WaitForChild("Remote"):WaitForChild("Task"):WaitForChild("ReqCompleteTask")
+        local claimed = 0
+        for i = 1, 28 do
+            local achieveId = 4000000 + (i * 1000) + 1
+            local ok, err = pcall(function() remote:InvokeServer(achieveId) end)
+            task.wait(0.2)
+        end
+        window:Notify({ Title="Achievement", Content=string.format("Claimed %d/28 achievement(s)!", claimed), Duration=3, Icon=claimed==28 and "lucide:check" or "lucide:alert-circle" })
+    end,
+})
+
+DailyquestSec:AddButton({
+    Name="Claim All BattlePass", Icon="lucide:gift",
+    Callback=function()
+        local remote = game:GetService("ReplicatedStorage")
+            :WaitForChild("Remote"):WaitForChild("BattlePass"):WaitForChild("ReqClaimBattlePassReward")
+        local claimed = 0
+        local TOTAL_TIERS = 50
+        for i = 1, TOTAL_TIERS do
+            local rewardId = 1000000 + i
+            local ok, err = pcall(function() remote:InvokeServer(rewardId) end)
+            task.wait(0.2)
+        end
+        window:Notify({ Title="Battle Pass", Content=string.format("Claimed %d/%d reward(s)!", claimed, TOTAL_TIERS), Duration=3, Icon=claimed==TOTAL_TIERS and "lucide:check" or "lucide:alert-circle" })
+    end,
+})
+
+DailyquestSec:AddButton({
+    Name="Claim All LevelReward", Icon="lucide:award",
+    Callback=function()
+        local remote = game:GetService("ReplicatedStorage")
+            :WaitForChild("Remote"):WaitForChild("PlayerLevelReward"):WaitForChild("ReqClaimPlayerLevelReward")
+        local claimed = 0
+        for i = 1, 70 do
+            local ok, err = pcall(function() remote:InvokeServer(i) end)
+            task.wait(0.2)
+        end
+        window:Notify({ Title="Level Reward", Content=string.format("Claimed %d/70 reward(s)!", claimed), Duration=3, Icon=claimed==70 and "lucide:check" or "lucide:alert-circle" })
+    end,
+})
+
+-- ==========================================
 -- TAB: MISC
 -- ==========================================
 window:AddTabLabel("Other")
 local DbgTab = window:AddTab({ Name="Misc", Icon="lucide:wrench", Type="Double" })
 
--- ==========================================
--- MISC STATE
--- ==========================================
 local MiscS = {
-    AntiAFK        = false,
-    Noclip         = false,
-    FullBright     = false,
-    InfiniteJump   = false,
-    SpeedEnabled   = false,
-    JumpEnabled    = false,
-    SpeedValue     = 16,
-    JumpValue      = 50,
-    FlingEnabled   = false,
-    FlingPower     = 100,
-    GravityEnabled = false,
-    GravityValue   = 196.2,
-    TimeEnabled    = false,
-    TimeValue      = 14,
-    FogEnabled     = false,
-    FogValue       = 100000,
-    ThirdPerson    = false,
-    TPDist         = 15,
+    AntiAFK=false, Noclip=false, FullBright=false, InfiniteJump=false,
+    SpeedEnabled=false, JumpEnabled=false, SpeedValue=16, JumpValue=50,
+    FlingEnabled=false, FlingPower=100, GravityEnabled=false, GravityValue=196.2,
+    TimeEnabled=false, TimeValue=14, FogEnabled=false, FogValue=100000,
+    ThirdPerson=false, TPDist=15,
 }
 
 local _origLighting = {
@@ -1397,56 +2001,29 @@ local _origLighting = {
     ClockTime      = game:GetService("Lighting").ClockTime,
 }
 
--- ==========================================
--- MISC: CHARACTER HELPERS
--- ==========================================
-local function getChar()
-    return plr.Character
-end
-local function getHRP()
-    local c = getChar()
-    return c and c:FindFirstChild("HumanoidRootPart")
-end
-local function getHum()
-    local c = getChar()
-    return c and c:FindFirstChildOfClass("Humanoid")
-end
-
--- WalkSpeed / JumpPower persist across respawn
-local function applySpeed(v)
-    local h = getHum()
-    if h then h.WalkSpeed = v end
-end
-local function applyJump(v)
-    local h = getHum()
-    if h then h.JumpPower = v end
-end
+local function getChar() return plr.Character end
+local function getHRP()  local c = getChar() return c and c:FindFirstChild("HumanoidRootPart") end
+local function getHum()  local c = getChar() return c and c:FindFirstChildOfClass("Humanoid") end
+local function applySpeed(v) local h = getHum() if h then h.WalkSpeed = v end end
+local function applyJump(v)  local h = getHum() if h then h.JumpPower  = v end end
 
 plr.CharacterAdded:Connect(function(char)
-    char:WaitForChild("Humanoid", 5)
-    task.wait(0.5)
+    char:WaitForChild("Humanoid", 5) task.wait(0.5)
     if MiscS.SpeedEnabled then applySpeed(MiscS.SpeedValue) end
     if MiscS.JumpEnabled   then applyJump(MiscS.JumpValue)  end
 end)
 
--- Anti-AFK
 local antiAFKConn = nil
 local function setAntiAFK(v)
     MiscS.AntiAFK = v
     if v then
         if antiAFKConn then antiAFKConn:Disconnect() end
         antiAFKConn = Svc.Run.Heartbeat:Connect(function()
-            -- Reset idle timer via VirtualInputManager mouse nudge
-            pcall(function()
-                Svc.VIM:SendMouseMoveEvent(0, 0, game)
-            end)
+            pcall(function() Svc.VIM:SendMouseMoveEvent(0, 0, game) end)
         end)
-    else
-        if antiAFKConn then antiAFKConn:Disconnect() antiAFKConn = nil end
-    end
+    else if antiAFKConn then antiAFKConn:Disconnect() antiAFKConn = nil end end
 end
 
--- Noclip
 local noclipConn = nil
 local function setNoclip(v)
     MiscS.Noclip = v
@@ -1454,86 +2031,36 @@ local function setNoclip(v)
         noclipConn = Svc.Run.Stepped:Connect(function()
             local char = getChar()
             if not char then return end
-            for _, p in ipairs(char:GetDescendants()) do
-                if p:IsA("BasePart") then p.CanCollide = false end
-            end
+            for _, p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end
         end)
     else
         if noclipConn then noclipConn:Disconnect() noclipConn = nil end
         local char = getChar()
-        if char then
-            for _, p in ipairs(char:GetDescendants()) do
-                if p:IsA("BasePart") then p.CanCollide = true end
-            end
-        end
+        if char then for _, p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = true end end end
     end
 end
 
--- Fullbright
 local function setFullBright(v)
     MiscS.FullBright = v
     local L = game:GetService("Lighting")
-    if v then
-        L.Brightness     = 2
-        L.Ambient        = Color3.new(1,1,1)
-        L.OutdoorAmbient = Color3.new(1,1,1)
-    else
-        L.Brightness     = _origLighting.Brightness
-        L.Ambient        = _origLighting.Ambient
-        L.OutdoorAmbient = _origLighting.OutdoorAmbient
-    end
+    if v then L.Brightness=2 L.Ambient=Color3.new(1,1,1) L.OutdoorAmbient=Color3.new(1,1,1)
+    else L.Brightness=_origLighting.Brightness L.Ambient=_origLighting.Ambient L.OutdoorAmbient=_origLighting.OutdoorAmbient end
 end
 
--- Infinite Jump
 local ijConn = nil
 local function setInfiniteJump(v)
     MiscS.InfiniteJump = v
     if v then
         ijConn = Svc.UIS.JumpRequest:Connect(function()
-            local h = getHum()
-            if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+            local h = getHum() if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
         end)
-    else
-        if ijConn then ijConn:Disconnect() ijConn = nil end
-    end
+    else if ijConn then ijConn:Disconnect() ijConn = nil end end
 end
 
--- Fling (pushes nearby players)
-local function doFling()
-    local hrp = getHRP()
-    if not hrp then return end
-    for _, p in ipairs(Svc.Players:GetPlayers()) do
-        if p == plr then continue end
-        local c  = p.Character
-        local tr = c and c:FindFirstChild("HumanoidRootPart")
-        if tr and (tr.Position - hrp.Position).Magnitude <= 20 then
-            local dir = (tr.Position - hrp.Position).Unit
-            local vel = Instance.new("BodyVelocity")
-            vel.Velocity       = dir * MiscS.FlingPower + Vector3.new(0, MiscS.FlingPower * 0.5, 0)
-            vel.MaxForce       = Vector3.new(1e5,1e5,1e5)
-            vel.P              = 1e4
-            vel.Parent         = tr
-            game:GetService("Debris"):AddItem(vel, 0.2)
-        end
-    end
-end
+local function applyGravity(v) workspace.Gravity = v end
+local function applyTime(v) game:GetService("Lighting").ClockTime = v end
+local function applyFog(v)  game:GetService("Lighting").FogEnd = v end
 
--- Gravity
-local function applyGravity(v)
-    workspace.Gravity = v
-end
-
--- Time of Day
-local function applyTime(v)
-    game:GetService("Lighting").ClockTime = v
-end
-
--- Fog
-local function applyFog(v)
-    game:GetService("Lighting").FogEnd = v
-end
-
--- Third Person Force (unlocks zoom past default max)
 local camConn = nil
 local function setThirdPerson(v, dist)
     MiscS.ThirdPerson = v
@@ -1552,252 +2079,135 @@ local function setThirdPerson(v, dist)
     end
 end
 
--- ==========================================
--- MISC UI — LEFT COLUMN
--- ==========================================
 local MiscLeftSec = DbgTab:AddSection({ Name="Player", Position="Left" })
-
-MiscLeftSec:AddToggle({
-    Name="Anti AFK", Default=false, Flag="MiscAntiAFK",
-    Callback=function(v) setAntiAFK(v) end,
-})
-
-MiscLeftSec:AddToggle({
-    Name="Infinite Jump", Default=false, Flag="MiscInfJump",
-    Callback=function(v) setInfiniteJump(v) end,
-})
-
-MiscLeftSec:AddToggle({
-    Name="Noclip", Default=false, Flag="MiscNoclip",
-    Callback=function(v) setNoclip(v) end,
-})
-
+MiscLeftSec:AddToggle({ Name="Anti AFK",      Default=false, Flag="MiscAntiAFK", Callback=function(v) setAntiAFK(v)      end })
+MiscLeftSec:AddToggle({ Name="Infinite Jump", Default=false, Flag="MiscInfJump", Callback=function(v) setInfiniteJump(v) end })
+MiscLeftSec:AddToggle({ Name="Noclip",        Default=false, Flag="MiscNoclip",  Callback=function(v) setNoclip(v)       end })
 MiscLeftSec:AddToggle({
     Name="WalkSpeed Override", Default=false, Flag="MiscSpeed",
-    Callback=function(v)
-        MiscS.SpeedEnabled = v
-        if v then applySpeed(MiscS.SpeedValue)
-        else  applySpeed(16) end
-    end,
+    Callback=function(v) MiscS.SpeedEnabled=v if v then applySpeed(MiscS.SpeedValue) else applySpeed(16) end end,
 })
 MiscLeftSec:AddSlider({
     Name="WalkSpeed", Min=2, Max=500, Default=16, Increment=1, Flag="MiscSpeedVal",
-    Callback=function(v)
-        MiscS.SpeedValue = v
-        if MiscS.SpeedEnabled then applySpeed(v) end
-    end,
+    Callback=function(v) MiscS.SpeedValue=v if MiscS.SpeedEnabled then applySpeed(v) end end,
 })
-
 MiscLeftSec:AddToggle({
     Name="JumpPower Override", Default=false, Flag="MiscJump",
-    Callback=function(v)
-        MiscS.JumpEnabled = v
-        if v then applyJump(MiscS.JumpValue)
-        else  applyJump(50) end
-    end,
+    Callback=function(v) MiscS.JumpEnabled=v if v then applyJump(MiscS.JumpValue) else applyJump(50) end end,
 })
 MiscLeftSec:AddSlider({
     Name="JumpPower", Min=10, Max=500, Default=50, Increment=5, Flag="MiscJumpVal",
-    Callback=function(v)
-        MiscS.JumpValue = v
-        if MiscS.JumpEnabled then applyJump(v) end
-    end,
+    Callback=function(v) MiscS.JumpValue=v if MiscS.JumpEnabled then applyJump(v) end end,
 })
-
 MiscLeftSec:AddToggle({
     Name="Custom Gravity", Default=false, Flag="MiscGravity",
-    Callback=function(v)
-        MiscS.GravityEnabled = v
-        if v then applyGravity(MiscS.GravityValue)
-        else  applyGravity(196.2) end
-    end,
+    Callback=function(v) MiscS.GravityEnabled=v if v then applyGravity(MiscS.GravityValue) else applyGravity(196.2) end end,
 })
 MiscLeftSec:AddSlider({
     Name="Gravity", Min=0, Max=500, Default=196, Increment=1, Flag="MiscGravityVal",
-    Callback=function(v)
-        MiscS.GravityValue = v
-        if MiscS.GravityEnabled then applyGravity(v) end
-    end,
+    Callback=function(v) MiscS.GravityValue=v if MiscS.GravityEnabled then applyGravity(v) end end,
 })
 
--- ==========================================
--- MISC UI — RIGHT COLUMN
--- ==========================================
 local MiscRightSec = DbgTab:AddSection({ Name="World", Position="Right" })
-
-MiscRightSec:AddToggle({
-    Name="Fullbright", Default=false, Flag="MiscFullBright",
-    Callback=function(v) setFullBright(v) end,
-})
-
+MiscRightSec:AddToggle({ Name="Fullbright", Default=false, Flag="MiscFullBright", Callback=function(v) setFullBright(v) end })
 MiscRightSec:AddToggle({
     Name="No Fog", Default=false, Flag="MiscNoFog",
-    Callback=function(v)
-        MiscS.FogEnabled = v
-        if v then applyFog(1e9)
-        else  applyFog(_origLighting.FogEnd) end
-    end,
+    Callback=function(v) MiscS.FogEnabled=v if v then applyFog(1e9) else applyFog(_origLighting.FogEnd) end end,
 })
-
 MiscRightSec:AddToggle({
     Name="Time of Day Override", Default=false, Flag="MiscTime",
-    Callback=function(v)
-        MiscS.TimeEnabled = v
-        if not v then applyTime(_origLighting.ClockTime) end
-    end,
+    Callback=function(v) MiscS.TimeEnabled=v if not v then applyTime(_origLighting.ClockTime) end end,
 })
 MiscRightSec:AddSlider({
     Name="Clock Time (0–24)", Min=0, Max=24, Default=14, Increment=0.5, Flag="MiscTimeVal",
-    Callback=function(v)
-        MiscS.TimeValue = v
-        if MiscS.TimeEnabled then applyTime(v) end
-    end,
+    Callback=function(v) MiscS.TimeValue=v if MiscS.TimeEnabled then applyTime(v) end end,
 })
 
 -- ==========================================
--- MISC: ANTI-LAG
+-- ANTI-LAG
 -- ==========================================
 local AntiLagS = {
-    Enabled        = false,
-    ShadowsKilled  = false,
-    ParticlesKilled= false,
-    TexturesLow    = false,
-    RenderDist     = 500,
-    FPSCapEnabled  = false,
-    FPSCapValue    = 60,
+    Enabled=false, ShadowsKilled=false, ParticlesKilled=false,
+    TexturesLow=false, RenderDist=500, FPSCapEnabled=false, FPSCapValue=60,
 }
-
 local _origRender = {
-    QualityLevel      = settings().Rendering.QualityLevel,
-    MeshPartLOD       = settings().Rendering.MeshPartDetailLevel,
-    ShadowSoftness    = game:GetService("Lighting").ShadowSoftness,
-    GlobalShadows     = game:GetService("Lighting").GlobalShadows,
+    QualityLevel   = settings().Rendering.QualityLevel,
+    MeshPartLOD    = settings().Rendering.MeshPartDetailLevel,
+    ShadowSoftness = game:GetService("Lighting").ShadowSoftness,
+    GlobalShadows  = game:GetService("Lighting").GlobalShadows,
 }
-
 local fpsCapConn = nil
 
 local function killParticles(v)
     AntiLagS.ParticlesKilled = v
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("ParticleEmitter") or obj:IsA("Smoke")
-        or obj:IsA("Fire")            or obj:IsA("Sparkles") then
+        if obj:IsA("ParticleEmitter") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") then
             obj.Enabled = not v
         end
     end
 end
-
 local function setLowTextures(v)
     AntiLagS.TexturesLow = v
     local r = settings().Rendering
-    if v then
-        r.QualityLevel        = Enum.QualityLevel.Level01
-        r.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Disabled
-    else
-        r.QualityLevel        = _origRender.QualityLevel
-        r.MeshPartDetailLevel = _origRender.MeshPartLOD
-    end
+    if v then r.QualityLevel=Enum.QualityLevel.Level01 r.MeshPartDetailLevel=Enum.MeshPartDetailLevel.Disabled
+    else r.QualityLevel=_origRender.QualityLevel r.MeshPartDetailLevel=_origRender.MeshPartLOD end
 end
-
 local function setShadows(v)
     AntiLagS.ShadowsKilled = v
     local L = game:GetService("Lighting")
-    if v then
-        L.GlobalShadows  = false
-        L.ShadowSoftness = 0
-    else
-        L.GlobalShadows  = true
-        L.ShadowSoftness = _origRender.ShadowSoftness
-    end
+    if v then L.GlobalShadows=false L.ShadowSoftness=0
+    else L.GlobalShadows=true L.ShadowSoftness=_origRender.ShadowSoftness end
 end
-
 local function setFPSCap(enabled, cap)
     if fpsCapConn then fpsCapConn:Disconnect() fpsCapConn = nil end
     AntiLagS.FPSCapEnabled = enabled
     if not enabled then return end
     local interval = 1 / cap
-    local last     = os.clock()
+    local last = os.clock()
     fpsCapConn = Svc.Run.RenderStepped:Connect(function()
-        local now  = os.clock()
-        local delta = now - last
-        if delta < interval then
-            -- busy-wait the remainder to throttle frame submission
+        if (os.clock() - last) < interval then
             repeat task.wait() until (os.clock() - last) >= interval
         end
         last = os.clock()
     end)
 end
-
 local function applyAntiLagPreset(v)
     AntiLagS.Enabled = v
-    killParticles(v)
-    setLowTextures(v)
-    setShadows(v)
-    if v then
-        pcall(function() workspace.StreamingMinRadius = AntiLagS.RenderDist end)
-    else
-        if _origRender.MaxDistance then
-            pcall(function() workspace.StreamingMinRadius = _origRender.MaxDistance end)
-        end
-    end
+    killParticles(v) setLowTextures(v) setShadows(v)
+    if v then pcall(function() workspace.StreamingMinRadius = AntiLagS.RenderDist end)
+    else if _origRender.MaxDistance then pcall(function() workspace.StreamingMinRadius = _origRender.MaxDistance end) end end
 end
 
--- ==========================================
--- ANTI-LAG UI SECTION
--- ==========================================
 local AntiLagSec = DbgTab:AddSection({ Name="Anti Lag", Position="Left" })
-
-AntiLagSec:AddToggle({
-    Name="Anti Lag (Preset — all below)", Default=false, Flag="AntiLagPreset",
-    Callback=function(v) applyAntiLagPreset(v) end,
-})
-AntiLagSec:AddToggle({
-    Name="Kill Shadows", Default=false, Flag="AntiLagShadows",
-    Callback=function(v) setShadows(v) end,
-})
-AntiLagSec:AddToggle({
-    Name="Kill Particles / Fire / Smoke", Default=false, Flag="AntiLagParticles",
-    Callback=function(v) killParticles(v) end,
-})
-AntiLagSec:AddToggle({
-    Name="Low Textures + Mesh LOD", Default=false, Flag="AntiLagTextures",
-    Callback=function(v) setLowTextures(v) end,
-})
+AntiLagSec:AddToggle({ Name="Anti Lag (Preset — all below)", Default=false, Flag="AntiLagPreset",    Callback=function(v) applyAntiLagPreset(v) end })
+AntiLagSec:AddToggle({ Name="Kill Shadows",                  Default=false, Flag="AntiLagShadows",   Callback=function(v) setShadows(v)         end })
+AntiLagSec:AddToggle({ Name="Kill Particles / Fire / Smoke", Default=false, Flag="AntiLagParticles", Callback=function(v) killParticles(v)      end })
+AntiLagSec:AddToggle({ Name="Low Textures + Mesh LOD",       Default=false, Flag="AntiLagTextures",  Callback=function(v) setLowTextures(v)     end })
 AntiLagSec:AddToggle({
     Name="Frame Rate Cap", Default=false, Flag="AntiLagFPSCap",
-    Callback=function(v)
-        AntiLagS.FPSCapEnabled = v
-        setFPSCap(v, AntiLagS.FPSCapValue)
-    end,
+    Callback=function(v) AntiLagS.FPSCapEnabled=v setFPSCap(v, AntiLagS.FPSCapValue) end,
 })
 AntiLagSec:AddSlider({
     Name="FPS Cap Value", Min=15, Max=240, Default=60, Increment=5, Flag="AntiLagFPSVal",
-    Callback=function(v)
-        AntiLagS.FPSCapValue = v
-        if AntiLagS.FPSCapEnabled then setFPSCap(true, v) end
-    end,
+    Callback=function(v) AntiLagS.FPSCapValue=v if AntiLagS.FPSCapEnabled then setFPSCap(true, v) end end,
 })
 
-
--- Re-apply particle kill on new descendants
 workspace.DescendantAdded:Connect(function(obj)
     if not AntiLagS.ParticlesKilled then return end
-    if obj:IsA("ParticleEmitter") or obj:IsA("Smoke")
-    or obj:IsA("Fire")            or obj:IsA("Sparkles") then
+    if obj:IsA("ParticleEmitter") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") then
         obj.Enabled = false
     end
 end)
 
 -- ==========================================
--- MISC UI — REJOIN / SERVER HOP SHORTCUTS
+-- SESSION
 -- ==========================================
 local MiscSrvSec = DbgTab:AddSection({ Name="Session", Position="Right" })
-
 MiscSrvSec:AddButton({
     Name="Rejoin Server", Icon="lucide:refresh-cw",
     Callback=function()
         window:Notify({ Title="Session", Content="Rejoining...", Duration=2, Icon="lucide:loader" })
-        task.wait(1)
-        Svc.Teleport:Teleport(game.PlaceId, plr)
+        task.wait(1) Svc.Teleport:Teleport(game.PlaceId, plr)
     end,
 })
 MiscSrvSec:AddButton({
